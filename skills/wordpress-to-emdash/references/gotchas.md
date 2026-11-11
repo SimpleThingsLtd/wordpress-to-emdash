@@ -177,10 +177,24 @@ finding kind, given in brackets.
   re-run the audit with `--refresh`. Check that no commenter email reaches a page: the WXR has
   them, and the template never renders them. If the owner doesn't want comments, record that in
   `audit.commentsAccepted` instead.
-- **Careful:** a collection with comments enabled accepts new comments through EmDash's public
-  API even when the site shows no form, within its moderation and closing settings
-  (`commentsModeration`, `commentsClosedAfterDays`). Turn comments off for the collection if the
-  archive should be read-only, or set up moderation before cutover.
+- **Careful:**
+  - A collection with comments enabled accepts new comments through EmDash's public API even when
+    the site shows no form, within its moderation and closing settings (`commentsModeration`:
+    `all`, `first_time` or `none`; `commentsClosedAfterDays`). Turn comments off for the collection
+    if the archive should be read-only, or set up moderation before cutover.
+  - `commentsClosedAfterDays` defaults to 90, counted from each entry's publish date. Imported
+    entries keep their WordPress dates, so the default closes nearly all of them. Read WordPress's
+    `close_comments_for_old_posts` and `close_comments_days_old` and match them (0 keeps every
+    entry open).
+  - WordPress filtered spam with Akismet. EmDash's form has a honeypot; add Cloudflare Turnstile
+    (`turnstileSiteKey` plus the `EMDASH_TURNSTILE_SECRET_KEY` secret), and hold comments for
+    approval (`all`).
+  - EmDash 1.4 doesn't purge the page cache when a comment is moderated, so an approved comment
+    appears only when the cached page expires (a day or more). The template middleware purges the
+    post's tags itself. Test it on a deployed site, not `astro dev`, which never caches: submit,
+    approve, and check the page within seconds. Then delete the test comment.
+  - New-comment emails need an email provider in EmDash. Without one, the owner has to check the
+    admin's Comments page.
 
 ### A14. A whole post type is missing from the export
 - **Detect:** compare `wp post-type list` and the per-type counts, taken **with plugins loaded**,
@@ -347,9 +361,18 @@ finding kind, given in brackets.
   mDNSResponder`) or wait 30 minutes.
 
 ### D10. Cutover can't attach the domain
+- **Detect:** the deploy uploads the new version and then reports `Hostname '<domain>' already has
+  externally managed DNS records … [code: 100117]`. The new version is live without the domain.
 - **Cause:** Cloudflare won't attach a Worker custom domain while another DNS record owns the
-  hostname.
-- **Fix:** delete the old records, add the routes and deploy, in one window.
+  hostname. Wrangler's non-interactive "override existing DNS records" doesn't cover records you
+  created yourself.
+- **Fix:** save the zone's records first (`GET /zones/<id>/dns_records`, for rollback), delete the
+  apex record, then run `wrangler deploy` again straight away. If both records were proxied the
+  public IPs don't change; the domain is without DNS for the seconds in between. This needs a
+  Cloudflare API token with Zone → DNS → Edit: wrangler's own login can't edit or even read DNS
+  records.
+- **Careful:** anything the new version does on other hosts is already live after the failed
+  deploy (a staging-host redirect, say). Retry at once.
 
 ### D11. The Worker outgrows the free plan
 - EmDash plus Astro is over the free plan's 3 MB compressed limit; server-side image or
@@ -395,6 +418,17 @@ finding kind, given in brackets.
 - **Don't:** point `EMDASH_SITE_URL` at staging to "fix" it. That changes the passkey's relying
   party, and can lock the owner out of the admin.
 
+### D16. www and the staging host show cached pages instead of redirecting
+- **Detect:** after cutover, `curl -sI https://www.<domain>/<cached post>/` returns 200 with
+  `cf-cache-status: HIT`; a cache-busting query string returns the redirect.
+- **Cause:** the Workers Cache in front of an EmDash Worker (`cacheCloudflare()`) isn't keyed by
+  hostname. A page cached for the apex is served on every hostname attached to the same Worker,
+  and a cache hit never runs the Worker, so a redirect in the Worker only happens on misses.
+- **Fix:** give the other hostnames to a separate, cache-free Worker that only redirects
+  (`templates/workers/redirects/`): 301 for GET and HEAD, 308 for the rest, path and query kept.
+  Deploy it before narrowing the site Worker's routes; it takes the hostnames over without a DNS
+  gap. Keep only the final domain on the site's Worker.
+
 ---
 
 ## E. Process and tooling
@@ -404,6 +438,11 @@ finding kind, given in brackets.
   versions you didn't make.
 - **Fix:** one branch and one deployer. Merge feature branches, then build, and check the
   deployment list before every deploy.
+- **At cutover it's worse:** wrangler sets a Worker's custom domains from the deploying tree's
+  `routes` (`replace_state`). A deploy from a tree that predates the cutover detaches the final
+  domain and deletes its DNS record. Before cutting over, find every other worktree or session
+  that deploys the Worker; build the cutover from a tree that includes what's live, and make sure
+  every later deploy comes from a tree with the new routes.
 
 ### E2. A route disappears from builds made from git
 - **Detect:** `git ls-files --others --ignored --exclude-standard -- src` prints anything.

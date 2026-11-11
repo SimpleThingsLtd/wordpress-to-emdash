@@ -3,6 +3,8 @@
  *  - a page-cache purge each time a new version goes live (gotchas D1, D2);
  *  - on preview hosts (staging, before cutover), media URLs pointed back at the
  *    host serving the page (gotcha D15).
+ *  - after cutover, other hostnames (www, the old staging host) redirected to
+ *    the site's domain (REDIRECT_HOSTS).
  *
  * Cached HTML outlives a deploy (the Workers cache isn't keyed by version),
  * and it points at hashed /_astro/ files the new deploy no longer has, so
@@ -17,6 +19,7 @@
  *   "triggers": { "crons": ["* * * * *"] },        // EmDash's own tasks use it too
  *   "d1_databases": [{ "binding": "DB", … }]       // EmDash's database
  *   "vars": { "EMDASH_SITE_URL": "https://example.com" }   // the final domain
+ *   and at cutover: "REDIRECT_HOSTS": "www.example.com,staging.example.com"
  * then `npx wrangler types` so Env knows both bindings. Add this before the
  * first content deploy.
  */
@@ -102,6 +105,23 @@ function previewMedia(request: Request, env: Env, response: Response) {
 	return rewriter.transform(response);
 }
 
+/*
+ * Other hostnames for the site (www, and the staging host once the site has
+ * moved to its final domain) 301 to EMDASH_SITE_URL, so search engines see one
+ * copy. List them in REDIRECT_HOSTS (comma-separated); set it at cutover, not
+ * before, or staging redirects to a domain that still serves WordPress.
+ * EmDash's own paths (/_emdash/…) aren't redirected, so the admin, the CLI and
+ * API clients keep working on those hosts.
+ */
+function hostRedirect(request: Request, env: Env): Response | null {
+	const vars = env as unknown as { REDIRECT_HOSTS?: string; EMDASH_SITE_URL?: string };
+	if (!vars.REDIRECT_HOSTS || !vars.EMDASH_SITE_URL) return null;
+	const url = new URL(request.url);
+	const hosts = vars.REDIRECT_HOSTS.split(",").map((h) => h.trim().toLowerCase());
+	if (!hosts.includes(url.hostname.toLowerCase()) || url.pathname.startsWith("/_emdash/")) return null;
+	return Response.redirect(new URL(url.pathname + url.search, vars.EMDASH_SITE_URL).href, 301);
+}
+
 export default {
 	...handler,
 	async fetch(request, env, ctx) {
@@ -109,7 +129,7 @@ export default {
 			checked = true;
 			ctx.waitUntil(sweep(env, "request").catch((err) => console.error("deploy sweep failed", err)));
 		}
-		return previewMedia(request, env, await handler.fetch!(request, env, ctx));
+		return hostRedirect(request, env) ?? previewMedia(request, env, await handler.fetch!(request, env, ctx));
 	},
 	scheduled(controller, env, ctx) {
 		ctx.waitUntil(sweep(env, "cron").catch((err) => console.error("deploy sweep failed", err)));

@@ -1,0 +1,14 @@
+// Deploy from this folder with `npx wrangler deploy -c ./wrangler.jsonc`: the -c stops
+// wrangler picking up the site's generated deploy config (.wrangler/deploy/config.json)
+// further up the tree.
+{
+	"name": "example-redirects",
+	"main": "./worker.js",
+	"compatibility_date": "2026-02-24",
+	"workers_dev": false,
+	"vars": { "SITE": "https://example.com" },
+	"routes": [
+		{ "pattern": "www.example.com", "custom_domain": true },
+		{ "pattern": "staging.example.com", "custom_domain": true },
+	],
+}

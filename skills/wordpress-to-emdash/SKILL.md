@@ -142,8 +142,10 @@ seen the report.
 
 ### Phase 7: Cutover → `references/cutover.md`
 
-Get the owner's explicit go-ahead. Then, in one window: remove the old DNS records, attach the
-Worker's custom domain, re-run the URL tests. Keep WordPress untouched for two weeks.
+Get the owner's explicit go-ahead. Before the window: one deployer, a DNS-edit token, the zone's
+records saved, and an archive copy of WordPress at its own hostname. Then, in one window: delete
+the apex record, deploy the custom domain, hand `www` and staging to the redirect Worker, re-run
+the URL tests. Keep WordPress untouched for two weeks.
 
 ## Deploy discipline
 

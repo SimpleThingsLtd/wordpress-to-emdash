@@ -82,6 +82,18 @@ Most of what remained needed the owner's decision rather than more code:
 The audit's last high findings: a sentence the converter dropped after a nested list inside a list
 item (a layout call for the owner), and a list item now shown as text plus a code block.
 
+## Cutover
+
+- The archive copy of WordPress took about 3 minutes to clone (601 posts, 525 MB of uploads). A
+  URL dry run then found 980 links still pointing at the old domain, plus 3 inside block JSON.
+- Wrangler refused the apex while its A record existed (D10), so the domain was without DNS for
+  about 25 seconds between deleting the record and the retry.
+- After the switch, `www` and the old staging host served cached pages instead of redirecting
+  (D16). A redirect-only Worker fixed it.
+- A second session had deployed search changes to the same Worker an hour before (E1). The
+  cutover was built with those changes included, so nothing live was lost.
+- After cutover, 22 of 22 old-URL spot checks passed on the live domain.
+
 ## What cost the most time
 
 1. Silent converter losses: found only by the page-by-page audit.

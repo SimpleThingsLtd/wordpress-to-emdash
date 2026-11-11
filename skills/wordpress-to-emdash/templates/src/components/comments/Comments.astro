@@ -16,12 +16,16 @@
  * beside this file (comments.extrasFile), keyed by date and author name.
  * Keep the file, even as `{}`: this component imports it.
  *
- * New comments (`form`): the form shows only when the prop is set AND the
+ * New comments (`form`): the form shows only when the prop is set, the
  * collection has comments enabled (Admin → Content types, or commentsEnabled
- * in the seed). Choose moderation first: EmDash's built-in moderator holds a
- * first-time commenter's comment for approval by default. Note that with
- * comments enabled, the public comments API accepts submissions whether or
- * not the form is on the page.
+ * in the seed), and the entry is younger than the collection's
+ * commentsClosedAfterDays (pass `publishedAt`; 0 days keeps every entry open).
+ * Imported entries keep their old dates, so EmDash's default of 90 days closes
+ * nearly all of them. Choose moderation first (commentsModeration: "all",
+ * "first_time" or "none"); a line above the form tells visitors which applies.
+ * For spam, pass `turnstileSiteKey` and set EMDASH_TURNSTILE_SECRET_KEY; the
+ * form already has a honeypot. With comments enabled, the public comments API
+ * accepts submissions whether or not the form is on the page.
  *
  * Styling: every colour and font is a --comments-* custom property, read with
  * a fallback to the EmDash blog template's tokens. Set them on any ancestor
@@ -30,7 +34,9 @@
  * Properties: --comments-ink, --comments-muted, --comments-rule,
  * --comments-accent, --comments-badge-bg, --comments-font (bodies),
  * --comments-font-ui (names, heading), --comments-font-meta (dates),
- * --comments-size, --comments-meta-size.
+ * --comments-size, --comments-meta-size; for the form, --comments-field-bg,
+ * --comments-field-border, --comments-on-accent, --comments-paper (the button's
+ * hover text) and --comments-radius.
  */
 import { getCollectionInfo, getComments } from "emdash";
 import { CommentForm } from "emdash/ui/comments";
@@ -50,6 +56,12 @@ interface Props {
 	timeZone?: string;
 	/** Heading text; defaults to "1 comment" / "N comments" */
 	title?: string;
+	/** The entry's publish date: the form closes commentsClosedAfterDays after it */
+	publishedAt?: string | Date | null;
+	/** Cloudflare Turnstile site key for the form (set EMDASH_TURNSTILE_SECRET_KEY on the server too) */
+	turnstileSiteKey?: string;
+	/** Text for EmDash's CommentForm (name, email, comment, submit, pending …) */
+	formLabels?: Record<string, string>;
 	class?: string;
 }
 
@@ -66,11 +78,22 @@ interface Item {
 	replies?: Item[];
 }
 
-const { collection, contentId, form = false, owners = [], locale = Astro.currentLocale ?? "en", timeZone, title, class: className } = Astro.props;
+const { collection, contentId, form = false, owners = [], locale = Astro.currentLocale ?? "en", timeZone, title, publishedAt, turnstileSiteKey, formLabels, class: className } = Astro.props;
 const extras = extrasJson as Record<string, Extra>;
 
 const { items, total } = (await getComments({ collection, contentId, threaded: true })) as { items: Item[]; total: number };
-const open = form && Boolean((await getCollectionInfo(collection))?.commentsEnabled);
+const info = form ? await getCollectionInfo(collection) : null;
+// EmDash refuses comments commentsClosedAfterDays after publishing; don't offer a form it would refuse
+const closeAfterDays = Number(info?.commentsClosedAfterDays ?? 0);
+const publishedMs = publishedAt ? new Date(publishedAt).getTime() : Number.NaN;
+const closedByAge = closeAfterDays > 0 && Number.isFinite(publishedMs) && Date.now() > publishedMs + closeAfterDays * 86_400_000;
+const open = Boolean(info?.commentsEnabled) && !closedByAge;
+const reviewNote =
+	info?.commentsModeration === "all"
+		? "Comments are read before they appear."
+		: info?.commentsModeration === "first_time"
+			? "A first comment is read before it appears."
+			: null;
 
 const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone });
 const formatDate = (iso: string) => {
@@ -170,7 +193,17 @@ const heading = title ?? (total === 1 ? "1 comment" : total ? `${total} comments
 					))}
 				</ol>
 			)}
-			{open ? <CommentForm collection={collection} contentId={contentId} /> : <p class="comments__closed">Comments are closed.</p>}
+			{open ? (
+				<div class="comments__respond">
+					<h3 class="comments__respond-title">{total ? "Add a comment" : "Be the first to comment"}</h3>
+					<p class="comments__note">
+						{reviewNote ? `${reviewNote} ` : ""}Your email address is never shown.
+					</p>
+					<CommentForm collection={collection} contentId={contentId} turnstileSiteKey={turnstileSiteKey} labels={formLabels} />
+				</div>
+			) : (
+				<p class="comments__closed">Comments are closed.</p>
+			)}
 		</section>
 	)
 }
@@ -268,6 +301,77 @@ const heading = title ?? (total === 1 ? "1 comment" : total ? `${total} comments
 		color: inherit;
 		text-decoration-color: color-mix(in srgb, var(--comments-accent, currentColor) 60%, transparent);
 		text-underline-offset: 0.15em;
+	}
+	/* The form: EmDash's CommentForm, themed through its --ec-form-* properties plus a few overrides */
+	.comments__respond {
+		margin-top: 2rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid var(--comments-rule, var(--color-border, color-mix(in srgb, currentColor 15%, transparent)));
+		--ec-form-gap: 0.9rem;
+		--ec-form-bg: var(--comments-field-bg, var(--color-surface, transparent));
+		--ec-form-border: var(--comments-field-border, var(--comments-rule, var(--color-border, color-mix(in srgb, currentColor 25%, transparent))));
+		--ec-form-color: inherit;
+		--ec-form-submit-bg: var(--comments-accent, var(--color-brand, currentColor));
+		--ec-form-submit-color: var(--comments-on-accent, var(--color-on-brand, Canvas));
+		--ec-form-success-color: var(--comments-accent, var(--color-brand, inherit));
+		--ec-form-user-bg: var(--comments-field-bg, var(--color-surface, transparent));
+		--ec-form-user-border: var(--comments-rule, var(--color-border, currentColor));
+	}
+	.comments__respond-title {
+		font-family: var(--comments-font-ui, var(--font-body, inherit));
+		font-size: 1.05rem;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		margin: 0 0 0.3rem;
+	}
+	.comments__note {
+		font-family: var(--comments-font-meta, var(--font-mono, ui-monospace, monospace));
+		font-size: var(--comments-meta-size, 0.8rem);
+		color: var(--comments-muted, var(--color-muted, inherit));
+		margin: 0 0 1.1rem;
+	}
+	.comments__respond :global(.ec-comment-form) {
+		font-family: var(--comments-font-ui, var(--font-body, inherit));
+	}
+	.comments__respond :global(.ec-comment-form-field > span) {
+		font-size: var(--comments-meta-size, 0.875rem);
+		font-weight: 600;
+	}
+	.comments__respond :global(.ec-comment-form-field input),
+	.comments__respond :global(.ec-comment-form-field textarea) {
+		border-width: 1.5px;
+		border-radius: var(--comments-radius, 0.5rem);
+		padding: 0.6rem 0.75rem;
+		transition: border-color 0.15s, box-shadow 0.15s;
+	}
+	.comments__respond :global(.ec-comment-form-field textarea) {
+		font-family: var(--comments-font, var(--font-body, inherit));
+		font-size: var(--comments-size, 1rem);
+		line-height: 1.5;
+		min-height: 8rem;
+		resize: vertical;
+	}
+	.comments__respond :global(.ec-comment-form-field input:focus),
+	.comments__respond :global(.ec-comment-form-field textarea:focus) {
+		outline: none;
+		border-color: var(--comments-accent, var(--color-brand, currentColor));
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--comments-accent, var(--color-brand, currentColor)) 25%, transparent);
+	}
+	.comments__respond :global(.ec-comment-form-submit) {
+		border-radius: 99px;
+		padding: 0.6rem 1.4rem;
+		transition: background-color 0.15s, color 0.15s;
+	}
+	.comments__respond :global(.ec-comment-form-submit:hover:not(:disabled)) {
+		background: var(--comments-ink, var(--color-text, currentColor));
+		color: var(--comments-paper, var(--color-bg, Canvas));
+	}
+	.comments__respond :global(.ec-comment-form-submit:focus-visible) {
+		outline: 2px solid var(--comments-accent, var(--color-brand, currentColor));
+		outline-offset: 3px;
+	}
+	.comments__respond :global(.cf-turnstile) {
+		margin-top: var(--ec-form-gap);
 	}
 	.comments__closed {
 		margin-top: 1.5rem;

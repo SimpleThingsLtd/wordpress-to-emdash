@@ -52,6 +52,7 @@ reader) and `optional.mjs` (optional tools). `lib/comments/` belongs to `import-
 | `src/pages/feed/atom.ts` | the same path, next to your RSS feed | C5 |
 | `src/pages/*-sitemap.xml.ts` | `src/pages/`, static files, one per old name | C3c, C5 |
 | `scripts/check-code-contrast.mjs` | `scripts/`; pass the CodeBlock file | rendering |
+| `workers/redirects/` | its own folder; a separate Worker, deployed at cutover | D16 |
 
 `templates/README.md` has the details: the wrangler settings the Worker needs, and the CSS custom
 properties CodeBlock exposes for theming.

@@ -2,7 +2,7 @@
   "name": "wordpress-to-emdash",
   "displayName": "WordPress to EmDash",
   "description": "Migrate a WordPress site to EmDash CMS on Cloudflare without losing content, media or links: inventory, WXR import, repairs for the converter's silent losses, legacy URL routes, a page-by-page parity audit against the live WordPress site, and cutover.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": {
     "name": "Simple Things Ltd"
   },

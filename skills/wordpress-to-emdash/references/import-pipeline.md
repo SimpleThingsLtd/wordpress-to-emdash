@@ -127,6 +127,9 @@ non-spam ones and keeps each comment's author name, date, threading and approval
 5. **Show them:** copy `templates/src/components/comments/` into the site, and render
    `<Comments collection contentId={entry.data.id} />` on the entry page
    (`templates/README.md`).
+6. **New comments, if the owner wants them:** add `form` and `publishedAt={entry.data.publishedAt}`,
+   and set the collection's moderation first (gotcha A13). Use the template middleware, so an
+   approved comment shows as soon as it's approved rather than when the cached page expires.
 
 Re-runs are safe. The script finds each comment that's already there, on any status (trash
 included), by its post and date, plus its name when two comments share a post and date. Then it

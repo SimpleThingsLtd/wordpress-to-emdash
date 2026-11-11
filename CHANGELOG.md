@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0 (2026-11-11)
+
+### Added
+- Comments: a moderated form. `Comments.astro` takes `form`, `publishedAt` (the form closes after
+  `commentsClosedAfterDays`, as EmDash does), `turnstileSiteKey` and `formLabels`. It themes
+  EmDash's `CommentForm` and says whether comments are read before they appear.
+- `templates/src/middleware.ts` purges a post's cached page when its comments are approved,
+  unapproved or deleted, which EmDash 1.4 doesn't do (gotcha A13).
+- `templates/workers/redirects/`: a cache-free Worker that redirects `www` and the staging host to
+  the final domain (gotcha D16).
+- Gotchas D16 (Workers Cache isn't keyed by hostname) and more on D10, E1 and A13.
+
+### Changed
+- `references/cutover.md` follows the cutover as it worked: one deployer, a DNS-edit token, the
+  zone's records saved, an archive copy of WordPress at its own hostname (clone, URL rewrite,
+  noindex, DNS-only certificate then proxied), the window in order, and rollback limits.
+- The Worker template can redirect other hostnames itself (`REDIRECT_HOSTS`), for sites without
+  Workers Cache.
+
 ## 1.1.0 (2026-11-11)
 
 ### Added

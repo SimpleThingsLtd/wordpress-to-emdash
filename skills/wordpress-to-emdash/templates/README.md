@@ -12,7 +12,7 @@ WordPress's paths: posts and pages at `/<slug>/`.
 | File | Goes to | What it does | Prevents |
 | --- | --- | --- | --- |
 | `src/worker.ts` | `src/worker.ts` | EmDash's Worker plus a page-cache purge the first time each new version serves a request, then two more sweeps from the minute cron. On any host other than `EMDASH_SITE_URL` (staging), rewrites media URLs that point at the final domain back to the serving host. Keeps EmDash's `createScheduledHandler` and `PluginBridge` exports. | D1, D2, D15 |
-| `src/middleware.ts` | `src/middleware.ts` (merge with an existing one) | Locks the setup wizard behind a `SETUP_KEY` secret, so the first visitor to a public deployment can't claim the admin account. | D7 |
+| `src/middleware.ts` | `src/middleware.ts` (merge with an existing one) | Locks the setup wizard behind a `SETUP_KEY` secret, so the first visitor to a public deployment can't claim the admin account. Purges a post's cached page when its comments are approved, unapproved or deleted, which EmDash 1.4 doesn't do (1.5 does; drop that part then). Needs the `DB` binding. | D7, A13 |
 
 `src/worker.ts` needs these in `wrangler.jsonc`, before the first content deploy:
 
@@ -57,7 +57,7 @@ The full list is at the top of `CodeBlock.astro`. Colours are `light-dark()` pai
 
 | File | Goes to | What it does | Prevents |
 | --- | --- | --- | --- |
-| `src/components/comments/Comments.astro` | `src/components/comments/` | An entry's approved comments from EmDash, threaded: name, linked to the commenter's site when WordPress had one (`rel="nofollow ugc"`), the date, an "Author" badge for `owners`, and the old `#comment-<id>` anchors. Archive only: `form` adds EmDash's `CommentForm`, which shows only when the collection has comments enabled. | A13 |
+| `src/components/comments/Comments.astro` | `src/components/comments/` | An entry's approved comments from EmDash, threaded: name, linked to the commenter's site when WordPress had one (`rel="nofollow ugc"`), the date, an "Author" badge for `owners`, and the old `#comment-<id>` anchors. Archive only by default. `form` adds EmDash's `CommentForm`, themed to match, with a line saying whether comments are read first. The form shows only when the collection has comments enabled and the entry is younger than `commentsClosedAfterDays` (pass `publishedAt`). `turnstileSiteKey` adds Cloudflare Turnstile; `formLabels` changes the form's text. | A13 |
 | `src/components/comments/wp-comment-extras.json` | the same folder | What EmDash doesn't store: each comment's author URL and WordPress ID, keyed by date and name. `import-comments.mjs --apply` rewrites it (`comments.extrasFile`). Ship it as `{}` until then: the component imports it. | A13 |
 
 Render it at the end of the entry, with the entry's database ID:
@@ -92,6 +92,12 @@ submissions whether the form is on the page or not.
 | `src/lib/entry-by-slug.ts` | `src/lib/` | `getEntryBySlug()`, which also finds slugs WordPress stored percent-encoded, and `looseSlug()` for the malformed slugs WordPress used to guess. | C3b, C4 |
 | `snippets/slug-route.md` | into `src/pages/[slug].astro` | The frontmatter for posts and pages at the root: posts first, then pages, the encoded-slug fallback, and the loose-slug 301. | C3b, C4, C7 |
 | `snippets/home-page-legacy-queries.md` | into `src/pages/index.astro` | `/?s=`, `/?p=`, `/?page_id=` and `/?feed=` redirects, using the ID map from `wp-ids.mjs`. | C2 |
+
+## At cutover
+
+| Template | Copy to | What it does | Gotchas |
+| --- | --- | --- | --- |
+| `workers/redirects/worker.js`, `wrangler.jsonc` | its own folder (not under `src/`) | A cache-free Worker that 301s `www` and the old staging host to the final domain (308 for non-GET), path and query kept. Set `SITE`, `name` and the `routes`, then deploy with `npx wrangler deploy -c ./wrangler.jsonc`. | D16 |
 
 ## Before the first build from git
 
