@@ -55,14 +55,21 @@ using WordPress-style paths.
 | --- | --- |
 | Critical | a section or post type missing; most pages failing |
 | High | page missing; gallery collapsed; embed that displayed is gone; raw shortcode visible; paragraphs or list items missing; images that break at cutover; code missing |
-| Medium | glued words; code flattened to paragraphs; script source printed as text; double-escaped titles; ID, base and category URL patterns failing; internal links 404 that worked before |
+| Medium | comments missing from a page; glued words; code flattened to paragraphs; script source printed as text; double-escaped titles; ID, base and category URL patterns failing; internal links 404 that worked before |
 | Low | paragraphs merged with line breaks; lists or quotes flattened; headings demoted; date archives; sitemap listing redirects; hotlinked images already dead |
 
 ## Known noise (classify it, don't count it)
 
 The built-in rules cover the common cases. Add site-specific ones in `audit.knownNoise` (a finding
-kind plus slug, path, summary or status patterns, and a reason). If comments were deliberately not
-migrated, set `audit.commentsAccepted`.
+kind plus slug, path, summary or status patterns, and a reason). The owner's choices in
+`decisions.json` count too: an embed shown as a card, an image or quoted text, or left out, and a
+script shown as code, are reported as known and marked `decided`. `fix-content` still acts on
+those, so a recorded decision gets applied even after a re-run of the audit.
+
+Comments: once `import-comments.mjs` has run, the audit counts the comments each page shows
+(`newSite.selectors.comment`) against its plan, and reports a page that's short as
+`comments-missing`. Re-run with `--refresh` after importing: cached copies of the new pages predate
+the comments. If comments were deliberately not migrated, set `audit.commentsAccepted` instead.
 
 - Things that didn't display on WordPress either: dead embeds, Flash, scripts that ran instead of
   showing.
@@ -92,6 +99,10 @@ migrated, set `audit.commentsAccepted`.
 - The home page and an archive.
 
 ## Things the audit can't see
+
+- **Bot-protected embeds.** CodePen (Cloudflare) and SlideShare (Fastly) challenge headless
+  browsers, both top-level and in frames. A headless check can't prove they work: confirm a
+  sample in a real browser, including Safari, which blocks third-party cookies.
 
 - Image identity: new media URLs are opaque IDs, so it matches by count and alt text. A wrong image
   in the right place passes.

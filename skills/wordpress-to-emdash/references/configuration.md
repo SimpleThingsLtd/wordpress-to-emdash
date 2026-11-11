@@ -37,7 +37,8 @@ post whose change no longer matches the approved signature. See `import-pipeline
 Script names below are abbreviated: `import` = `import-wordpress.mjs`, `links` =
 `postprocess-links.mjs`, `bylines` = `merge-bylines.mjs`, `media` = `fix-media-urls.mjs`,
 `quotes` = `fix-quotes.mjs`, `fix` = `fix-content.mjs`, `redirects` = `add-redirects.mjs`,
-`ids` = `wp-ids.mjs`, `text` = `audit-content.mjs`, `audit` = `compare-sites.mjs`.
+`ids` = `wp-ids.mjs`, `text` = `audit-content.mjs`, `audit` = `compare-sites.mjs`, `comments` =
+`import-comments.mjs`.
 
 ### `site`: reporting
 
@@ -122,6 +123,7 @@ commenter emails), caches and reports: keep it out of git.
 | `newSite.selectors.tags` | selector, or `null` | `null` | `".entry-tags a"` | audit: tag links; `null` skips the check |
 | `newSite.selectors.featured` | selector, or `null` | `null` | `".entry-figure img"` | audit: featured image; `null` skips the check |
 | `newSite.selectors.isPost` | selector, or `null` | `null` | `".byline"` | audit: present only on post pages, to catch a post whose address now serves another page (falls back to `newSite.sections`) |
+| `newSite.selectors.comment` | selector, or `null` | `".comment__card"` | `".comment-body"` | audit: one element per rendered comment (the default is the template's card). Each page's count is checked against `import-comments.mjs`'s plan; `null` skips the check |
 | `newSite.selectors.ignore` | selector, or `null` | `".code__bar"` | | audit, fix: chrome left out of the text comparison (the default is the template CodeBlock's header) |
 
 The theme-specific selectors default to `null` because a guess would report noise on every page.
@@ -198,6 +200,36 @@ expects it to be gone. Leave it off unless your site has such a convention.
 | Key | Type | Default | Used by |
 | --- | --- | --- | --- |
 | `bylines.merge` | list of `{ target, duplicates }` | `[]` | bylines: `target` is the byline to keep (`slug`, `displayName`, optional `websiteUrl`, `isGuest`); created if missing. `duplicates` is a regular expression for the per-chunk bylines to fold into it, such as `"^jsmith(-\\d+)?$"` |
+
+### `comments`: WordPress comments (gotcha A13)
+
+`import-comments.mjs` imports only comments approved in WordPress, then drops spam, duplicates and
+(by default) pingbacks. The preview (`<work>/comments/preview.html`) lists every decision and its
+reason. IDs below are WordPress comment IDs (`wp:comment_id`), shown as `#123` in the preview.
+
+| Key | Type | Default | Example | Used by |
+| --- | --- | --- | --- | --- |
+| `comments.includePingbacks` | boolean | `false` | `true` | comments: import pingbacks and trackbacks too. Self-pingbacks (from the site itself or a dev host) stay out either way. Both kinds are listed in the preview |
+| `comments.keepEmails` | boolean | `true` | `false` | comments: store each commenter's email in EmDash, where only the admin sees it (moderation; first-time-commenter checks if comments reopen). `false` stores an empty address. Emails are never rendered, and never written to the preview or `plan.json` |
+| `comments.spamThreshold` | number | `3` | `4` | comments: a comment with this many spam points or more is left out |
+| `comments.maxLinks` | number | `2` | `1` | comments: more links than this in one comment scores 3 points |
+| `comments.spamPhrases` | regular expressions (strings) | `[]` | `["\\bessay writing\\b"]` | comments: extra spam phrases, 3 points each, on top of the built-in pharma, casino, SEO, loan, adult and replica vocabulary and the known spinner templates |
+| `comments.spammyTlds` | TLDs, or `null` | `null` (a built-in list: `ru`, `cn`, `xyz`, `top`, `info`, `biz` …) | `["ru", "xyz"]` | comments: an author URL or link on one of these scores 2 points |
+| `comments.trustedAuthors` | author names | `[]` | `["Jane Smith"]` | comments: never scored as spam (WordPress users, `comment_user_id` > 0, are trusted already); the preview marks them |
+| `comments.renameAuthors` | map, WordPress name → name to store | `{}` | `{ "jsmith": "Jane Smith" }` | comments: one name per person |
+| `comments.include` | IDs, or map ID → reason | `[]` | `[8571]` | comments: kept whatever the filter says (unapproved, spam, pingback or duplicate), unless the post isn't on the new site |
+| `comments.exclude` | IDs, or map ID → reason | `[]` | `{ "827": "Boilerplate praise" }` | comments: left out, with the reason shown in the preview |
+| `comments.orphans` | `"reattach"`, `"drop"` or `"promote"` | `"reattach"` | | comments: replies whose parent was left out. `reattach` hangs them under the nearest kept comment above, and drops them if there's none (an answer to a spam question reads oddly alone). `drop` leaves them all out. `promote` keeps them all, at the top level if needed |
+| `comments.extrasFile` | path in the site | `"src/components/comments/wp-comment-extras.json"` | | comments (`--apply` writes it): author URLs and WordPress IDs, which EmDash doesn't store, for the `Comments.astro` template. Commit it |
+| `comments.pageSize` | number | `100` | `50` | comments: comments per import request (keeps each under Worker limits) |
+
+The spam signals and their points: spam vocabulary in the text or name (3); spam terms in the
+author URL (3) or email (2); a known spinner template (3); letters from another alphabet hiding
+in Latin words (3); a copy of an earlier comment by someone else (3); too many links (3); a short
+comment carrying a link (2); a link with keyword anchor text (2); an author URL on a spammy TLD
+(2) or that's just a big site's home page (2); an author name made of keywords (1 or 2) or a
+sentence (1), or the same as its site's domain (1); generic praise (1), and short with it (1).
+Pingbacks are checked for vocabulary, links and templates only.
 
 ### `redirects`
 

@@ -278,12 +278,14 @@ export async function loadAudit(path = AUDIT_PATH) {
 	}
 	const bySlug = new Map();
 	for (const f of report.findings) {
-		if (!f.slug || f.known) continue;
+		// Known findings are settled, except ones the owner decided in decisions.json: those still
+		// need the decision carried out (each fix recognises its own finished work)
+		if (!f.slug || (f.known && !f.decided)) continue;
 		if (!bySlug.has(f.slug)) bySlug.set(f.slug, []);
 		bySlug.get(f.slug).push(f);
 	}
 	const kinds = (slug, ...ks) => (bySlug.get(slug) ?? []).filter((f) => ks.includes(f.kind));
-	const slugsWith = (...ks) => new Set(report.findings.filter((f) => !f.known && f.slug && ks.includes(f.kind)).map((f) => f.slug));
+	const slugsWith = (...ks) => new Set(report.findings.filter((f) => (!f.known || f.decided) && f.slug && ks.includes(f.kind)).map((f) => f.slug));
 	return { report, bySlug, kinds, slugsWith };
 }
 

@@ -39,7 +39,9 @@ node $M/fix-content.mjs                                        # proposals + pre
 # 5. Old addresses
 node $M/add-redirects.mjs       && node $M/add-redirects.mjs --apply --target local        # uploads → media, rules
 node $M/wp-ids.mjs                                             # writes src/lib/wp-ids.json
-# 6. Check
+# 6. Comments (A13): read comments/preview.html before applying
+node $M/import-comments.mjs     && node $M/import-comments.mjs --apply --target local
+# 7. Check
 node $M/audit-content.mjs                                      # export text missing from rendered pages
 ```
 
@@ -94,6 +96,47 @@ code, classic, embeds, wpImages, textLoss and unpublish.
    approved proposal. High and medium confidence apply by default; `--include-low` adds the rest.
    Filters: `--only`, `--slugs`, `--skip slug[:fix]`, `--limit N`.
 6. **Verify:** spot-check the pages, then re-run the audit with `--refresh`.
+
+## Comments: `import-comments.mjs`
+
+EmDash's WXR import skips comments (gotcha A13). This script brings across the approved,
+non-spam ones and keeps each comment's author name, date, threading and approval.
+
+1. **Dry run:** `node $M/import-comments.mjs`. It writes `<work>/comments/preview.html` and
+   `plan.json`:
+   - what would be imported, threaded per post;
+   - the near misses: kept comments with some spam signals;
+   - everything left out, grouped by reason: spam, not approved, pingbacks, duplicates, replies
+     to removed comments, and posts that aren't on the new site.
+
+   Commenter emails are never shown.
+2. **Adjust:** move comments with `comments.exclude` and `comments.include`, by WordPress comment
+   ID. Mark the owner with `comments.trustedAuthors` and merge their aliases with
+   `comments.renameAuthors`. Then run the dry run again (`configuration.md`).
+3. **Back up** the local D1 files, then apply: `--apply --target local`.
+4. **What the script does when it applies:**
+   - starts a feed of the filtered comments in the EmDash Exporter's format (localhost, a random
+     Basic token, a Cloudflare quick tunnel; `cloudflared` must be installed);
+   - asks the site to import from it, and closes the feed;
+   - re-reads the comments to check that each one is there, under the right parent;
+   - writes `comments/ledger.<target>.json` (each WordPress comment ID → EmDash comment ID);
+   - writes `comments.extrasFile` in the site: the author URLs and WordPress IDs that EmDash
+     doesn't store.
+
+   Commit the extras file.
+5. **Show them:** copy `templates/src/components/comments/` into the site, and render
+   `<Comments collection contentId={entry.data.id} />` on the entry page
+   (`templates/README.md`).
+
+Re-runs are safe. The script finds each comment that's already there, on any status (trash
+included), by its post and date, plus its name when two comments share a post and date. Then it
+imports only the rest. EmDash itself also skips a comment with the same post, email, date and
+body.
+
+On staging: if comments were imported locally before `emdash site export`, the site package
+carries them. Otherwise run `--apply --target staging` (with `EMDASH_TOKEN`). The Worker then
+fetches the feed through the tunnel. Cached post pages don't change until the page cache is
+purged, which the template Worker does when a new version is deployed.
 
 ## Writing a new repair
 

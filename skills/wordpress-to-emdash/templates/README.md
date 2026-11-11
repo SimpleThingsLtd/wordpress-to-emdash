@@ -53,6 +53,31 @@ The full list is at the top of `CodeBlock.astro`. Colours are `light-dark()` pai
 `color-scheme: light dark` on the page. After changing any of them, run
 `node scripts/check-code-contrast.mjs path/to/the/file/with/your/overrides.css`.
 
+## Comments
+
+| File | Goes to | What it does | Prevents |
+| --- | --- | --- | --- |
+| `src/components/comments/Comments.astro` | `src/components/comments/` | An entry's approved comments from EmDash, threaded: name, linked to the commenter's site when WordPress had one (`rel="nofollow ugc"`), the date, an "Author" badge for `owners`, and the old `#comment-<id>` anchors. Archive only: `form` adds EmDash's `CommentForm`, which shows only when the collection has comments enabled. | A13 |
+| `src/components/comments/wp-comment-extras.json` | the same folder | What EmDash doesn't store: each comment's author URL and WordPress ID, keyed by date and name. `import-comments.mjs --apply` rewrites it (`comments.extrasFile`). Ship it as `{}` until then: the component imports it. | A13 |
+
+Render it at the end of the entry, with the entry's database ID:
+
+```astro
+---
+import Comments from "../components/comments/Comments.astro";
+---
+<div class="entry__comments">
+	<Comments collection="posts" contentId={entry.data.id} owners={["Jane Smith"]} timeZone="Europe/London" />
+</div>
+```
+
+It renders nothing when an entry has no comments and the form is off. Its colours and fonts are
+`--comments-*` custom properties, which fall back to the EmDash blog template's tokens. They're
+read with fallbacks rather than declared on the component, so they inherit: set them on a
+wrapper, as above. The full list is in the component's header. Before turning `form` on, decide
+on moderation. Once comments are enabled on the collection, EmDash's public comments API accepts
+submissions whether the form is on the page or not.
+
 ## Old WordPress addresses
 
 | File | Goes to | What it does | Prevents |
@@ -60,6 +85,8 @@ The full list is at the top of `CodeBlock.astro`. Colours are `light-dark()` pai
 | `src/pages/wp-content/uploads/[...path].ts` | same path | Old upload URLs, including `-WxH` resized copies and `-scaled` originals, 301 to their media file, read from the redirect rows `add-redirects.mjs` creates. EmDash's redirect middleware skips paths with file extensions, so this route has to exist. | C1, B1 |
 | `src/pages/_base_/[slug]/[...rest].ts` | `src/pages/<base>/[slug]/[...rest].ts`, one copy per old base | `/<base>/<slug>/` (and attachment pages under it) → `/<slug>/`. Rename `_base_`: Astro ignores folders starting with `_`, so the template doesn't route as it is. List the bases in `urls.oldPermalinkBases` too, so the audit tests them. | C3, C3b |
 | `src/pages/category/[parent]/[slug].ts` | same path | Nested categories `/category/<parent>/<child>/` → `/category/<child>/`. | C5 |
+| `src/pages/[year]/[...rest].ts` | same path | Month and day archives (`/2015/04/`, `/2015/04/12/`) → that year on your archive page (`ARCHIVE`, with `#y2015` anchors). Year archives are single segments, so `[slug]` owns them: see `snippets/slug-route.md`. | C5 |
+| `src/pages/_retired_/[...path].ts` | `src/pages/<section>/[...path].ts`, renamed | Everything under a section with no direct equivalent (a plugin post type such as `/portfolio/`) → the page that replaced it (`TARGET`). Rename the folder, as with `_base_`. If the items still exist at `/<slug>/`, use `_base_` instead. | A14, C5 |
 | `src/pages/feed/atom.ts` | same path | `/feed/atom/` → the site's feed. Set `FEED` to where yours is (`/feed/` or the blog template's `/rss.xml`). | C5 |
 | `src/pages/sitemap_index.xml.ts`, `post-sitemap.xml.ts`, `page-sitemap.xml.ts`, `category-sitemap.xml.ts`, `post_tag-sitemap.xml.ts`, `author-sitemap.xml.ts`, `wp-sitemap.xml.ts` | `src/pages/` | Each old SEO-plugin or core sitemap address → EmDash's `/sitemap.xml`. Copy only the names your old site served. **One static file per name; never a dynamic `[name].xml.ts` route**, which swallows EmDash's own child sitemaps. | C3c, C5 |
 | `src/lib/entry-by-slug.ts` | `src/lib/` | `getEntryBySlug()`, which also finds slugs WordPress stored percent-encoded, and `looseSlug()` for the malformed slugs WordPress used to guess. | C3b, C4 |

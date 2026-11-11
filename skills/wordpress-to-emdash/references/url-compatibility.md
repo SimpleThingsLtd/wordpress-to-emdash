@@ -23,13 +23,14 @@ bookmarks all hold these URLs.
 | `/?s=<q>` | home page → `/search/?q=` | a 301 to search |
 | `/?feed=rss2`, `/feed/`, `/feed/atom/` | `/feed/` endpoint (RSS at the old address) plus small redirects | the feed validates; old feed URLs 301 |
 | Old permalink bases, such as `/blog/<slug>/`. **Sites accumulate several** over the years. Find them in old internal links in the WXR, not just the redirect plugin's rules | `templates/src/pages/_base_/[slug]/[...rest].ts`, renamed per base, → `/<slug>/` (this also covers attachment pages under the base). **Not `<base>/[...path]`:** that also captures the bare `/<base>/`, which can be a real post's slug | 10 old-base URLs 301 to 200 |
-| Malformed slugs that WordPress "guessed" (`/writing/.net-awards-2013`, `…-tr.im`) | the `[slug]` route (`templates/snippets/slug-route.md`): if nothing matches, loosen the slug (dots to hyphens, trim punctuation), and 301 if that matches | the old internal links resolve |
+| Malformed slugs that WordPress "guessed" (`/blog/.net-awards-2013`, `…-tr.im`) | the `[slug]` route (`templates/snippets/slug-route.md`): if nothing matches, loosen the slug (dots to hyphens, trim punctuation), and 301 if that matches | the old internal links resolve |
 | `/category/<slug>/`, `/tag/<slug>/` | term archive routes | every term returns 200 |
 | `/category/<parent>/<child>/` | `templates/src/pages/category/[parent]/[slug].ts` → `/category/<child>/` | nested terms 301 |
 | `/author/<name>/` | redirect to `/about/` or an author page | a 301 |
-| `/YYYY/`, `/YYYY/MM/`, `/YYYY/MM/DD/` | owner decision; usually the archive page with a year anchor | archives 301 |
+| `/YYYY/`, `/YYYY/MM/`, `/YYYY/MM/DD/` | the archive page's year section: `templates/src/pages/[year]/[...rest].ts` for months and days, plus the year check in `templates/snippets/slug-route.md` (years are single segments, owned by `[slug]`). Check it before the post lookup **fails**, not before it runs: a post can be called `2015` | archives 301 to `/archive/#y2015` |
 | `/page/N/`, `/<section>/page/N/` | owner decision; usually the archive | a 301 |
 | Attachment pages `/<post>/<attachment>/`, `/<attachment>/` | owner decision; usually the parent post | a 301 |
+| A retired section or plugin post type (`/portfolio/…`) | `templates/src/pages/_retired_/[...path].ts`, renamed, → the section that replaced it | a 301 |
 | `/sitemap_index.xml`, `/post-sitemap.xml`, `/wp-sitemap.xml` | one small static route per old name (`templates/src/pages/*-sitemap.xml.ts`) → EmDash's `/sitemap.xml`. **Not a dynamic `[name].xml` route:** it captures EmDash's own child sitemaps (`/sitemap-posts.xml`) and empties the sitemap | a 301 |
 | `/wp-admin/`, `/wp-login.php`, `/xmlrpc.php` | 404, or redirect to `/_emdash/admin` (admin only) | they don't serve WordPress |
 | Pages deliberately replaced (`/old-about-page/` → `/about/`) | redirect-table row; **unpublish the old page** so the sitemap drops it (C6) | a 301; not in the sitemap |

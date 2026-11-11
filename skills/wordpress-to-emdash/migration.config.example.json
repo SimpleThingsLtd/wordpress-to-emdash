@@ -105,6 +105,21 @@
 			}
 		]
 	},
+	"comments": {
+		"includePingbacks": false,
+		"keepEmails": true,
+		"spamThreshold": 3,
+		"maxLinks": 2,
+		"spamPhrases": [],
+		"spammyTlds": null,
+		"trustedAuthors": ["Jane Smith"],
+		"renameAuthors": { "jsmith": "Jane Smith" },
+		"include": [],
+		"exclude": { "827": "Boilerplate praise; the author URL is someone else's site" },
+		"orphans": "reattach",
+		"extrasFile": "src/components/comments/wp-comment-extras.json",
+		"pageSize": 100
+	},
 	"redirects": {
 		"rules": [
 			{ "source": "/author/[...path]", "destination": "/about/" },

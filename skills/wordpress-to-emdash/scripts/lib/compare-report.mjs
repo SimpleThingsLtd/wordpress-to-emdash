@@ -87,6 +87,8 @@ export const KIND_LABELS = {
 	"featured-hidden-link-post": "Featured image hidden on link posts",
 	"link-url-different": "Link-post destination differs",
 	"comments-not-imported": "Comments not imported",
+	"comments-missing": "Comments missing",
+	"comments-imported": "Comments imported",
 	"shortcodes-in-export": "Shortcodes in the export",
 	"listing-page": "Listing pages rebuilt as templates",
 };
@@ -257,6 +259,12 @@ const FIX_RULES = [
 		html: "Old upload addresses must 301 to their media file. EmDash’s redirect middleware skips paths with file extensions, so they need <code>src/pages/wp-content/uploads/[...path].ts</code> from the templates, plus the redirect rows from <code>add-redirects.mjs</code>. If every sampled upload fails, check the deployed build includes that route (gotchas C1, E2); if a few fail, add those files.",
 	},
 	{
+		type: "mechanical",
+		kinds: ["comments-missing"],
+		title: "Bring the missing comments across",
+		html: "These pages show fewer comments than <code>import-comments.mjs</code> planned. Run it with <code>--apply</code> against this site (it imports only what’s missing), check the Comments component is rendered on the entry page, and that <code>newSite.selectors.comment</code> matches its markup. Cached pages change only after the page cache is purged (gotchas A13, D1).",
+	},
+	{
 		type: "judgement",
 		kinds: ["post-shadowed"],
 		title: "Decide about posts hidden by new routes",
@@ -273,7 +281,7 @@ const FIX_RULES = [
 		kinds: ["embed-lost", "embed-degraded"],
 		match: (f) => !["youtube", "vimeo", "video", "audio"].includes(f.details?.type),
 		title: "Choose how other embeds render",
-		html: "EmDash’s Embed block plays only YouTube and Vimeo; anything else (CodePen, Spotify, SlideShare, tweets …) becomes a bare link. The options per provider or per post: a link card, an isolated HTML block with the provider’s embed (check the CSP), or leaving it out. Record each choice in <code>decisions.json</code> and re-run <code>fix-content.mjs</code> (gotcha A6).",
+		html: "EmDash’s Embed block plays only YouTube and Vimeo; anything else (CodePen, Spotify, SlideShare, tweets …) becomes a bare link. The options per provider or per post: a link card, EmDash’s <code>iframe</code> block for players that are iframes (CodePen, Spotify, SlideShare: <code>fix-content</code>’s <code>html</code> option), an image for GIF hosts, or leaving it out. Not an isolated HTML block: its sandbox has no <code>allow-same-origin</code>, so most players refuse to load in it. Record each choice in <code>decisions.json</code> and re-run <code>fix-content.mjs</code> (gotcha A6).",
 	},
 	{
 		type: "judgement",

@@ -22,13 +22,16 @@ them, the browser checks, the self-check and side-by-side screenshots are skippe
 | `fix-content.mjs` (+ `lib/fix/`) | 3, 6 | Audit-driven repairs: titles, brackets, captions, gallery, code, classic, embeds, wpImages, textLoss, unpublish. Proposals, preview, owner decisions, apply from the approved file only, with signature checks | `fixes.*`, `paths.fixes`, `paths.decisions` |
 | `add-redirects.mjs` | 4 | Redirect rows: every upload → its media file, replaced pages, your rules | `redirects.*`, `urls.replacedPages` |
 | `wp-ids.mjs` | 4 | `src/lib/wp-ids.json` for `?p=` and `?page_id=` (C2) | `paths.wpIds` |
+| `import-comments.mjs` (+ `lib/comments/`) | 3 | Approved WordPress comments → EmDash comments, keeping dates and threads (A13): spam heuristics, a preview, an idempotent import, then a check. Writes the site's author-URL and WordPress-ID file. Needs `cloudflared` for the feed tunnel, or `--feed-url` | `comments.*`, `paths.wxr` |
 | `audit-content.mjs` | 3 | Quick text check: export text missing from rendered pages | `newSite.selectors` |
-| `compare-sites.mjs` (+ `lib/compare-core.mjs`, `lib/compare-report.mjs`) | 6 | The parity audit against live WordPress: pages, elements, media, embeds, URL patterns, screenshots, HTML report. Read-only, cached, `--offline` capable | `sites.*`, `wordpress.*`, `newSite.*`, `urls.*`, `audit.*`, `http.*` |
+| `compare-sites.mjs` (+ `lib/compare-core.mjs`, `lib/compare-report.mjs`) | 6 | The parity audit against live WordPress: pages, elements, media, embeds, comment counts (once `import-comments.mjs` has run), URL patterns, screenshots, HTML report. Read-only, cached, `--offline` capable | `sites.*`, `wordpress.*`, `newSite.*`, `urls.*`, `audit.*`, `http.*` |
 
 Shared code in `lib/`: `config.mjs` (finds and validates the config: `--config`, then
 `MIGRATION_CONFIG`, then the nearest `migration.config.json`; supports `extends`), `cli.mjs`
 (flags and targets), `emdash-api.mjs` (REST client; read-only in dry runs), `wxr.mjs` (export
-reader) and `optional.mjs` (optional tools).
+reader) and `optional.mjs` (optional tools). `lib/comments/` belongs to `import-comments.mjs`:
+`read.mjs` (WXR comments to plain text), `filter.mjs` (the spam and threading rules), `feed.mjs`
+(the temporary exporter-format feed and tunnel) and `preview.mjs`.
 
 ## Templates (`templates/` → the site)
 
@@ -40,8 +43,11 @@ reader) and `optional.mjs` (optional tools).
 | `src/lib/code-lang.ts`, `src/lib/highlight.ts` | `src/lib/` (`pnpm add shiki`, pinned) | A7, D14 |
 | `src/lib/entry-by-slug.ts` + `snippets/slug-route.md` | `src/lib/`, and your `[slug].astro` | C3b, C4 |
 | `snippets/home-page-legacy-queries.md` | your home page's frontmatter | C2 |
+| `src/components/comments/Comments.astro` + `wp-comment-extras.json` | `src/components/comments/`, rendered on your entry page | A13 |
 | `src/pages/wp-content/uploads/[...path].ts` | the same path | C1 |
 | `src/pages/_base_/[slug]/[...rest].ts` | once per old permalink base, renamed | C3 |
+| `src/pages/[year]/[...rest].ts` + the year section of `snippets/slug-route.md` | the same path; your `[slug].astro` | C5 |
+| `src/pages/_retired_/[...path].ts` | once per retired section, renamed | A14, C5 |
 | `src/pages/category/[parent]/[slug].ts` | the same path, if categories were nested | C5 |
 | `src/pages/feed/atom.ts` | the same path, next to your RSS feed | C5 |
 | `src/pages/*-sitemap.xml.ts` | `src/pages/`, static files, one per old name | C3c, C5 |
@@ -58,6 +64,7 @@ properties CodeBlock exposes for theming.
 | `inventory.md` | the Phase 0 record |
 | `compare/` | audit output: `report.json`, `summary.md`, `report.html`, `shots/`, `history.json`, cache |
 | `fixes/` | `proposals.json`, `proposals.approved.json`, `preview.html`, `decisions.json`, apply logs |
+| `comments/` | `preview.html` and `plan.json` from `import-comments.mjs` (no email addresses), and `ledger.<target>.json` (WordPress comment ID → EmDash comment ID) |
 | `backups/` | local D1 backups before bulk applies |
 | `tools/` | optional `playwright-core` install |
 | `*.emdash` | site packages for staging imports |

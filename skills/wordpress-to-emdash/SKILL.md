@@ -15,6 +15,7 @@ silent. The import reports success while:
 - embeds vanish;
 - shortcodes print as raw text;
 - classic-editor posts lose their paragraph breaks;
+- comments are left behind;
 - old URLs 404.
 
 So a migration isn't done when the import finishes. It's done when a page-by-page comparison with
@@ -105,8 +106,10 @@ WordPress kept in content or meta, such as a link post's URL. See `building-emda
 3. Run the repair scripts for the converter's known gaps: quotes, galleries, shortcodes,
    classic-post paragraphs (`wpautop`), code, embeds, entities, media variants, bylines, and the
    site's conventions.
-4. Add the rendering overrides from `templates/` (`references/rendering.md`).
-5. Run a quick text check with `scripts/audit-content.mjs`.
+4. Bring the approved, non-spam comments across with `scripts/import-comments.mjs`, if the owner
+   wants them (gotcha A13).
+5. Add the rendering overrides from `templates/` (`references/rendering.md`).
+6. Run a quick text check with `scripts/audit-content.mjs`.
 
 **Gate 3:** counts match the inventory; the text check shows only known noise; the spot-check set
 looks right beside WordPress.

@@ -151,6 +151,7 @@ const blockHas = (b, id) => {
 	if (!id) return false;
 	if (b._type === "embed") return (b.url ?? "").includes(id) || (b.html ?? "").includes(id);
 	if (b._type === "htmlBlock") return (b.html ?? "").includes(id);
+	if (b._type === "iframe") return (b.src ?? "").includes(id);
 	if (b._type === "block") return textOf(b).includes(id) || (b.markDefs ?? []).some((d) => (d.href ?? "").includes(id));
 	return false;
 };
@@ -170,13 +171,26 @@ function cardBlock(type, c, caption) {
 	return b;
 }
 
+/*
+ * A live embed. Providers with an iframe URL get EmDash's own `iframe` block,
+ * which gives the embed its own origin (allow-scripts allow-same-origin).
+ * Don't put their iframe inside an isolated HTML block: that frame's sandbox
+ * has no allow-same-origin, nested frames inherit it, and embeds that need
+ * cookies or storage (CodePen, and any behind a bot check) fail to load.
+ */
 function htmlOption(type, c, e) {
 	if (type === "tweet") return { _type: "htmlBlock", _key: newKey("html"), html: `<blockquote class="twitter-tweet">${e.tweetHtml ?? `<a href="${c.url}">${c.url}</a>`}</blockquote><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`, isolated: true };
-	const height = { spotify: 380, "giphy.com": 270, codepen: 500, "kickstarter.com": 420, slideshare: 485 }[type] ?? 400;
-	return { _type: "htmlBlock", _key: newKey("html"), html: `<iframe src="${c.iframe ?? c.url}" width="100%" height="${height}" frameborder="0" allowfullscreen loading="lazy"></iframe>`, isolated: true };
+	const src = c.iframe ?? c.url;
+	const height = type === "spotify" && /\/track\//.test(src) ? 152 : ({ spotify: 380, "giphy.com": 270, codepen: 500, "kickstarter.com": 420, slideshare: 485 }[type] ?? 400);
+	return { _type: "iframe", _key: newKey("ifr"), src, title: `${PROVIDER_NAME[type] ?? type} embed`, height, allow: "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture", allowFullscreen: true };
 }
 
-/** A tweet as quote paragraphs with its citation line (Quote.astro renders the footer). */
+/** An embed's figure caption, kept as an italic line under what replaces the embed. */
+function captionBlock(text) {
+	return { _type: "block", _key: newKey("cap"), style: "normal", children: [{ _type: "span", _key: newKey("capt"), text, marks: ["em"] }], markDefs: [] };
+}
+
+/** A tweet as quote paragraphs with its citation line (Quote.astro renders the footer), then its caption. */
 function tweetQuote(e) {
 	let n = 0;
 	const key = () => `${newKey("tw")}${n++}`;
@@ -192,6 +206,7 @@ function tweetQuote(e) {
 		const { children, markDefs } = parseInlineContent(`— ${after.replace(/^\s*(&mdash;|—)\s*/, "")}`, key);
 		out.push({ _type: "block", _key: key(), style: "blockquote", children, ...(markDefs.length ? { markDefs } : {}) });
 	}
+	if (out.length && e.caption) out.push(captionBlock(e.caption));
 	return out;
 }
 
@@ -247,6 +262,11 @@ export default {
 				// Already restored (a re-run)
 				if (here?._type === "embed" && here.url === c.url) continue;
 				const dead = (e.type === "video" || e.type === "audio") && head?.status !== 200;
+				const leftOut = (ctx.decision(entry.slug, "embeds", e.type) ?? ctx.decisions?.[`provider:${e.type}`]) === "leave";
+				if (dead && leftOut) {
+					items.push({ kind: e.type, summary: `${e.type === "video" ? "Video" : "Audio"} file ${e.src} no longer loads: left out (the owner's decision)`, confidence: "high", decision: "leave", embeds: [{ type: e.type, src: e.src, status: head?.status ?? 0 }] });
+					continue;
+				}
 				if (dead) {
 					const archived = await ctx.wayback(e.src);
 					needsOwner.push({
@@ -282,10 +302,15 @@ export default {
 			const caption = e.type === "codepen" ? (here?._type === "block" ? textOf(here) : e.caption ?? "").replace(/\s+/g, " ").replace(/\s+([.,)])/g, "$1").replace(/\(\s+/g, "(").trim() : e.caption;
 			// Already decided and applied (a re-run)
 			if (here?._type === "embed" && here.url === c.url && here._key?.startsWith("card")) continue;
-			if (here?._type === "htmlBlock" && here.isolated && c.iframe && (here.html ?? "").includes(c.iframe)) continue;
+			const decided = ctx.decision(entry.slug, "embeds", e.type) ?? ctx.decisions?.[`provider:${e.type}`] ?? null;
+			if (here?._type === "iframe" && (here.src ?? "").includes(c.id)) continue;
+			if (decided === "image" && here?._type === "htmlBlock" && c.image && (here.html ?? "").includes(c.image)) continue;
+			// An earlier live embed as an isolated HTML block is upgraded to an iframe block
+			if (decided !== "html" && here?._type === "htmlBlock" && here.isolated && c.iframe && (here.html ?? "").includes(c.iframe)) continue;
 			const options = {
 				card: e.type === "tweet" ? (now === "the tweet's text as a quote" ? "Keep the quote (it already shows the tweet's text and links to it)" : "Show the tweet as a quote with its citation") : `Link card: an embed block with the URL and a caption (EmDash renders a link + caption)`,
-				html: `Isolated HTML block with ${PROVIDER_NAME[e.type] ?? e.type}'s embed (sandboxed frame; check the site CSP allows it)`,
+				html: e.type === "tweet" ? "X's own widget in an isolated HTML block (slow, and tracks visitors)" : `Live embed: ${PROVIDER_NAME[e.type] ?? e.type}'s player in an iframe block (check the site's CSP allows it)`,
+				...(c.image ? { image: "The image itself (for example the GIF), in an isolated block" } : {}),
 				leave: now === "nothing" || now.startsWith("nothing") ? "Leave it out" : `Leave it as ${now}`,
 			};
 			const decisionKey = `${entry.slug}:embeds:${e.type}`;
@@ -304,16 +329,23 @@ export default {
 					e.type === "giphy.com" && c.image ? `The GIF itself is ${c.image}; it could also go in as an image` : null,
 				].filter(Boolean),
 			};
-			if (chosen === "card" || chosen === "html") {
+			if (chosen === "card" || chosen === "html" || (chosen === "image" && c.image)) {
 				let blocks;
-				if (chosen === "card") {
+				// The image itself (a GIF from Giphy, say), in an isolated block so it sizes to fit
+				if (chosen === "image") blocks = [{ _type: "htmlBlock", _key: newKey("img"), html: `<img src="${c.image}" alt="${(caption ?? "").replace(/"/g, "&quot;")}" style="display:block;max-width:100%;height:auto;margin:0 auto">`, isolated: true }];
+				else if (chosen === "card") {
 					if (e.type !== "tweet") blocks = [cardBlock(e.type, c, caption)];
 					else if (now === "the tweet's text as a quote") blocks = null;
 					else blocks = tweetQuote(e).length ? tweetQuote(e) : [cardBlock(e.type, c, caption)];
 				}
-				else blocks = [htmlOption(e.type, c, e)];
+				else if (chosen === "html") blocks = [htmlOption(e.type, c, e)];
 				if (blocks === null) {
-					items.push({ ...record, kind: "undecided-kept", summary: `${record.summary}: kept as a quote`, confidence: "high", decision: chosen });
+					// The quote is already there; bring back the embed's caption if the page lacks it
+					const lacksCaption = e.caption && at >= 0 && !next.some((b) => textOf(b).includes(e.caption));
+					let end = at;
+					while (next[end + 1]?._type === "block" && next[end + 1].style === "blockquote") end++;
+					if (lacksCaption) next = [...next.slice(0, end + 1), captionBlock(e.caption), ...next.slice(end + 1)];
+					items.push({ ...record, kind: "undecided-kept", summary: `${record.summary}: kept as a quote${lacksCaption ? `, with its caption “${e.caption}”` : ""}`, confidence: "high", decision: chosen });
 					continue;
 				}
 				// A card replaces the fallback paragraph too (it repeats the same link)
@@ -321,9 +353,14 @@ export default {
 				const res = replaceFallback ? [...next.slice(0, at), ...blocks, ...next.slice(at + 1)] : place(blocks);
 				if (res) {
 					next = res;
-					items.push({ ...record, summary: `${record.summary} → ${chosen === "card" ? "link card" : "isolated HTML block"}`, confidence: "medium", decision: chosen });
+					items.push({ ...record, summary: `${record.summary} → ${chosen === "card" ? "link card" : chosen === "image" ? "the image itself" : e.type === "tweet" ? "X widget" : "live embed (iframe block)"}`, confidence: "medium", decision: chosen });
 					continue;
 				}
+			}
+			// Left out by the owner's decision: settled, nothing to change
+			if (chosen === "leave") {
+				items.push({ ...record, kind: "left-out", summary: `${record.summary}: left out (the owner's decision)`, confidence: "high", decision: chosen });
+				continue;
 			}
 			needsOwner.push({ ...record, status: "needs-owner" });
 		}

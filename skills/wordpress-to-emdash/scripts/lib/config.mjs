@@ -65,6 +65,7 @@ export const DEFAULTS = {
 			tags: null,
 			featured: null,
 			isPost: null,
+			comment: ".comment__card",
 			ignore: ".code__bar",
 		},
 	},
@@ -99,6 +100,21 @@ export const DEFAULTS = {
 		shorteners: ["ift.tt", "bit.ly", "t.co", "goo.gl", "ow.ly", "buff.ly", "j.mp", "tinyurl.com"],
 	},
 	bylines: { merge: [] },
+	comments: {
+		includePingbacks: false,
+		keepEmails: true,
+		spamThreshold: 3,
+		maxLinks: 2,
+		spamPhrases: [],
+		spammyTlds: null,
+		trustedAuthors: [],
+		renameAuthors: {},
+		include: [],
+		exclude: [],
+		orphans: "reattach",
+		extrasFile: "src/components/comments/wp-comment-extras.json",
+		pageSize: 100,
+	},
 	redirects: { rules: [], group: "wordpress", uploadsGroup: "wp-uploads" },
 	fixes: {
 		waybackTimestamp: "2014",
@@ -214,7 +230,7 @@ function finish(merged, file) {
 }
 
 // Keys whose children are the user's own names (slugs, paths, post types), not settings
-const MAPS = new Set(["content.postTypes", "urls.replacedPages", "urls.listingPages", "urls.acceptedRedirects", "fixes.unpublish"]);
+const MAPS = new Set(["content.postTypes", "urls.replacedPages", "urls.listingPages", "urls.acceptedRedirects", "fixes.unpublish", "comments.renameAuthors", "comments.exclude", "comments.include"]);
 
 /** Keys the toolkit doesn't know: almost always a typo, so say so (to stderr) instead of ignoring them. */
 export function unknownKeys(layer, defaults = DEFAULTS, prefix = "") {

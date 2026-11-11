@@ -1,0 +1,278 @@
+---
+/**
+ * An entry's comments: threaded, the author's name linked to their site when
+ * WordPress had one (rel="nofollow ugc"), the date, and the old WordPress
+ * anchors (#comment-123) kept. Archive-only by default; `form` adds EmDash's
+ * comment form.
+ *
+ *   ---
+ *   import Comments from "../components/comments/Comments.astro";
+ *   ---
+ *   <Comments collection="posts" contentId={entry.data.id} owners={["Jane Smith"]} timeZone="Europe/London" />
+ *
+ * Comments come from EmDash's comments table (approved only), imported by
+ * import-comments.mjs. EmDash 1.4 doesn't store an author URL or the
+ * WordPress comment ID, so the script writes both to wp-comment-extras.json
+ * beside this file (comments.extrasFile), keyed by date and author name.
+ * Keep the file, even as `{}`: this component imports it.
+ *
+ * New comments (`form`): the form shows only when the prop is set AND the
+ * collection has comments enabled (Admin → Content types, or commentsEnabled
+ * in the seed). Choose moderation first: EmDash's built-in moderator holds a
+ * first-time commenter's comment for approval by default. Note that with
+ * comments enabled, the public comments API accepts submissions whether or
+ * not the form is on the page.
+ *
+ * Styling: every colour and font is a --comments-* custom property, read with
+ * a fallback to the EmDash blog template's tokens. Set them on any ancestor
+ * (they inherit), for example a wrapper element in the page:
+ *   .entry__comments { --comments-muted: var(--muted); --comments-font: Georgia, serif; }
+ * Properties: --comments-ink, --comments-muted, --comments-rule,
+ * --comments-accent, --comments-badge-bg, --comments-font (bodies),
+ * --comments-font-ui (names, heading), --comments-font-meta (dates),
+ * --comments-size, --comments-meta-size.
+ */
+import { getCollectionInfo, getComments } from "emdash";
+import { CommentForm } from "emdash/ui/comments";
+import extrasJson from "./wp-comment-extras.json";
+
+interface Props {
+	collection: string;
+	/** The entry's database ID: entry.data.id, not the slug */
+	contentId: string;
+	/** Show EmDash's form for new comments (needs comments enabled on the collection). Default: off, an archive */
+	form?: boolean;
+	/** Author names to mark as the post's author */
+	owners?: string[];
+	/** Locale for dates; defaults to the page locale, then "en" */
+	locale?: string;
+	/** IANA zone for dates, so a late-evening comment keeps its local day */
+	timeZone?: string;
+	/** Heading text; defaults to "1 comment" / "N comments" */
+	title?: string;
+	class?: string;
+}
+
+interface Extra {
+	wp?: number;
+	url?: string;
+	type?: string;
+}
+interface Item {
+	id: string;
+	authorName: string;
+	body: string;
+	createdAt: string;
+	replies?: Item[];
+}
+
+const { collection, contentId, form = false, owners = [], locale = Astro.currentLocale ?? "en", timeZone, title, class: className } = Astro.props;
+const extras = extrasJson as Record<string, Extra>;
+
+const { items, total } = (await getComments({ collection, contentId, threaded: true })) as { items: Item[]; total: number };
+const open = form && Boolean((await getCollectionInfo(collection))?.commentsEnabled);
+
+const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone });
+const formatDate = (iso: string) => {
+	const d = new Date(iso);
+	return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
+};
+const ownerSet = new Set(owners.map((n) => n.toLowerCase()));
+const extraFor = (c: Item): Extra => extras[`${c.createdAt}|${c.authorName}`] ?? {};
+const anchorFor = (c: Item) => `comment-${extraFor(c).wp ?? c.id}`;
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/** Plain text → escaped HTML with bare URLs linked; blank lines are paragraphs, single newlines breaks. */
+function paragraphs(body: string): string[] {
+	return body
+		.split(/\n{2,}/)
+		.map((p) => p.trim())
+		.filter(Boolean)
+		.map((p) => {
+			let out = "";
+			let last = 0;
+			for (const m of p.matchAll(/https?:\/\/[^\s<>"'()[\]]+/g)) {
+				const url = m[0].replace(/[.,;:!?]+$/, "");
+				out += esc(p.slice(last, m.index)) + `<a href="${esc(url)}" rel="nofollow ugc noopener">${esc(url)}</a>`;
+				last = (m.index ?? 0) + url.length;
+			}
+			return (out + esc(p.slice(last))).replace(/\n/g, "<br>");
+		});
+}
+
+const heading = title ?? (total === 1 ? "1 comment" : total ? `${total} comments` : "Comments");
+---
+
+{
+	(total > 0 || open) && (
+		<section class:list={["comments", className]} aria-labelledby={`comments-title-${contentId}`}>
+			<h2 class="comments__title" id={`comments-title-${contentId}`}>
+				{heading}
+			</h2>
+			{items.length > 0 && (
+				<ol class="comments__list">
+					{items.map((c) => (
+						<li class="comment" id={anchorFor(c)}>
+							<article class="comment__card">
+								<header class="comment__head">
+									<span class="comment__author">
+										{extraFor(c).url ? (
+											<a href={extraFor(c).url} rel="nofollow ugc noopener">
+												{c.authorName}
+											</a>
+										) : (
+											c.authorName
+										)}
+									</span>
+									{ownerSet.has(c.authorName.toLowerCase()) && <span class="comment__badge">Author</span>}
+									{extraFor(c).type && <span class="comment__badge comment__badge--plain">{extraFor(c).type}</span>}
+									<a class="comment__date" href={`#${anchorFor(c)}`}>
+										<time datetime={c.createdAt}>{formatDate(c.createdAt)}</time>
+									</a>
+								</header>
+								<div class="comment__body">
+									{paragraphs(c.body).map((html) => (
+										<p set:html={html} />
+									))}
+								</div>
+							</article>
+							{c.replies && c.replies.length > 0 && (
+								<ol class="comments__replies">
+									{c.replies.map((r) => (
+										<li class="comment comment--reply" id={anchorFor(r)}>
+											<article class="comment__card">
+												<header class="comment__head">
+													<span class="comment__author">
+														{extraFor(r).url ? (
+															<a href={extraFor(r).url} rel="nofollow ugc noopener">
+																{r.authorName}
+															</a>
+														) : (
+															r.authorName
+														)}
+													</span>
+													{ownerSet.has(r.authorName.toLowerCase()) && <span class="comment__badge">Author</span>}
+													<a class="comment__date" href={`#${anchorFor(r)}`}>
+														<time datetime={r.createdAt}>{formatDate(r.createdAt)}</time>
+													</a>
+												</header>
+												<div class="comment__body">
+													{paragraphs(r.body).map((html) => (
+														<p set:html={html} />
+													))}
+												</div>
+											</article>
+										</li>
+									))}
+								</ol>
+							)}
+						</li>
+					))}
+				</ol>
+			)}
+			{open ? <CommentForm collection={collection} contentId={contentId} /> : <p class="comments__closed">Comments are closed.</p>}
+		</section>
+	)
+}
+
+<style>
+	.comments {
+		color: var(--comments-ink, var(--color-text, inherit));
+	}
+	.comments__title {
+		font-family: var(--comments-font-ui, var(--font-body, inherit));
+		font-size: 1.25rem;
+		font-weight: 700;
+		letter-spacing: -0.015em;
+		line-height: 1.2;
+		margin: 0 0 1.25rem;
+	}
+	.comments__list,
+	.comments__replies {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.comment {
+		scroll-margin-top: 5rem;
+	}
+	.comments__list > .comment + .comment {
+		margin-top: 1.25rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--comments-rule, var(--color-border, color-mix(in srgb, currentColor 15%, transparent)));
+	}
+	.comments__replies {
+		margin-top: 1rem;
+		margin-left: 0.35rem;
+		padding-left: 1.1rem;
+		border-left: 2px solid var(--comments-rule, var(--color-border, color-mix(in srgb, currentColor 15%, transparent)));
+	}
+	.comments__replies > .comment + .comment {
+		margin-top: 1rem;
+	}
+	.comment:target > .comment__card {
+		outline: 2px solid var(--comments-accent, var(--color-brand, currentColor));
+		outline-offset: 0.5rem;
+		border-radius: 2px;
+	}
+	.comment__head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.2rem 0.6rem;
+		margin-bottom: 0.35rem;
+	}
+	.comment__author {
+		font-family: var(--comments-font-ui, var(--font-body, inherit));
+		font-weight: 650;
+		font-size: var(--comments-meta-size, 0.9rem);
+		overflow-wrap: anywhere;
+	}
+	.comment__author a {
+		color: inherit;
+	}
+	.comment__badge {
+		font-family: var(--comments-font-meta, var(--font-mono, ui-monospace, monospace));
+		font-size: 0.7rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.1em 0.55em;
+		border-radius: 99px;
+		background: var(--comments-badge-bg, color-mix(in srgb, var(--comments-accent, currentColor) 14%, transparent));
+		color: var(--comments-accent, var(--color-brand, currentColor));
+	}
+	.comment__badge--plain {
+		background: none;
+		color: var(--comments-muted, var(--color-muted, inherit));
+	}
+	.comment__date {
+		font-family: var(--comments-font-meta, var(--font-mono, ui-monospace, monospace));
+		font-size: var(--comments-meta-size, 0.8rem);
+		color: var(--comments-muted, var(--color-muted, inherit));
+		text-decoration: none;
+		font-variant-numeric: tabular-nums;
+	}
+	.comment__date:hover {
+		text-decoration: underline;
+	}
+	.comment__body {
+		font-family: var(--comments-font, var(--font-body, inherit));
+		font-size: var(--comments-size, 1rem);
+		line-height: 1.55;
+		overflow-wrap: anywhere;
+	}
+	.comment__body p + p {
+		margin-top: 0.65em;
+	}
+	.comment__body :global(a) {
+		color: inherit;
+		text-decoration-color: color-mix(in srgb, var(--comments-accent, currentColor) 60%, transparent);
+		text-underline-offset: 0.15em;
+	}
+	.comments__closed {
+		margin-top: 1.5rem;
+		font-family: var(--comments-font-meta, var(--font-mono, ui-monospace, monospace));
+		font-size: var(--comments-meta-size, 0.8rem);
+		color: var(--comments-muted, var(--color-muted, inherit));
+	}
+</style>

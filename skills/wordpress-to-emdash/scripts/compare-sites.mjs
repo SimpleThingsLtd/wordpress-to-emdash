@@ -65,6 +65,29 @@ const WXR = CONFIG.paths.wxr;
 const UA = `${CONFIG.http.userAgent} migration-audit`;
 const SEL = selectorsFromConfig();
 const LP = CONFIG.linkPosts;
+// The owner's choices for fix-content (decisions.json): an embed or script handled as decided isn't a loss
+let DECISIONS = {};
+const decisionFor = (slug, fix, type) => DECISIONS[`${slug}:${fix}:${type}`] ?? (fix === "embeds" ? DECISIONS[`provider:${type}`] : undefined) ?? null;
+// import-comments.mjs's plan, once it has run: how many comments each page should show
+let COMMENT_PLAN = null;
+const slugKey = (s) => {
+	try {
+		return decodeURIComponent(s).toLowerCase();
+	} catch {
+		return String(s).toLowerCase();
+	}
+};
+
+async function loadCommentPlan() {
+	const plan = JSON.parse(await readFile(join(CONFIG.paths.work, "comments", "plan.json"), "utf8").catch(() => "null"));
+	if (!Array.isArray(plan?.import)) return null;
+	const perPost = new Map();
+	for (const c of plan.import) {
+		const key = slugKey(String(c.post).split(":").slice(1).join(":"));
+		perPost.set(key, (perPost.get(key) ?? 0) + 1);
+	}
+	return { generated: plan.generated ?? null, counts: plan.counts ?? {}, total: plan.import.length, perPost };
+}
 
 const REFRESH = flag("refresh");
 const REFRESH_OLD = flag("refresh-old");
@@ -458,6 +481,11 @@ async function main() {
 	const contentNotInNewSitemap = items.filter((it) => it.ok && !newPaths.has(it.path)).map((it) => it.path);
 	if (contentNotInNewSitemap.length) add({ group: "pages", severity: "low", kind: "missing-from-new-sitemap", summary: `${contentNotInNewSitemap.length} pages resolve but aren't in the new sitemap`, details: { paths: contentNotInNewSitemap } });
 
+	// Comments planned by import-comments.mjs, if it has run (gotcha A13)
+	COMMENT_PLAN = await loadCommentPlan();
+	DECISIONS = JSON.parse(await readFile(CONFIG.paths.decisions, "utf8").catch(() => "{}"));
+	if (COMMENT_PLAN) log(`  Comments: ${COMMENT_PLAN.total} planned by import-comments.mjs, on ${COMMENT_PLAN.perPost.size} pages`);
+
 	// 4. Page-by-page content comparison (needs a browser)
 	const pw = await loadPlaywright();
 	if (!pw) log(`Playwright isn't installed: skipping the page-by-page comparison, image and link probes, live embed checks and screenshots. ${PLAYWRIGHT_HINT}`);
@@ -563,6 +591,7 @@ async function main() {
 			summary: `${t.label}: ${t.result}`,
 			details: { hops: t.hops, expect: t.expect, status: t.status },
 			score: t.severity === "high" ? 20 : t.severity === "medium" ? 8 : 2,
+			...(t.oldStatus ? { known: `Already ${t.oldStatus} on WordPress`, severity: "info", score: 1 } : {}),
 		});
 	}
 
@@ -571,7 +600,20 @@ async function main() {
 	const approved = [...wxrText.matchAll(/<wp:comment>([\s\S]*?)<\/wp:comment>/g)].map((m) => m[1]).filter((c) => /<wp:comment_approved>(?:<!\[CDATA\[)?1/.test(c));
 	const pings = approved.filter((c) => /<wp:comment_type>(?:<!\[CDATA\[)?(pingback|trackback)/.test(c)).length;
 	const commentsAccepted = CONFIG.audit.commentsAccepted;
-	if (approved.length || commentTotal) {
+	if (COMMENT_PLAN) {
+		const counted = pageReports.filter((p) => p.comments);
+		const shown = counted.reduce((n, p) => n + p.comments.shown, 0);
+		const expected = counted.reduce((n, p) => n + p.comments.expected, 0);
+		const left = Object.entries(COMMENT_PLAN.counts.byCategory ?? {}).map(([k, v]) => `${k} ${v}`).join(", ");
+		add({
+			group: "content",
+			severity: "info",
+			kind: "comments-imported",
+			summary: `${COMMENT_PLAN.total} of ${approved.length} approved comments and pingbacks planned for import by import-comments.mjs; ${counted.length ? `${shown} of the ${expected} expected on the compared pages are shown` : "not counted on the pages (needs Playwright and newSite.selectors.comment)"}${left ? `. Left out: ${left}` : ""}`,
+			known: "Reviewed in comments/preview.html and imported with import-comments.mjs; a page short of its comments is a comments-missing finding",
+			details: { planned: COMMENT_PLAN.total, planGenerated: COMMENT_PLAN.generated, leftOut: COMMENT_PLAN.counts.byCategory ?? {}, pagesCounted: counted.length, expected, shown, wxrApproved: approved.length, wxrPings: pings, restTotal: commentTotal },
+		});
+	} else if (approved.length || commentTotal) {
 		add({
 			group: "content",
 			severity: commentsAccepted ? "info" : "medium",
@@ -584,6 +626,17 @@ async function main() {
 	}
 	const wxrNote = shortcodeNote(wxrText);
 	add({ group: "content", severity: "info", kind: "shortcodes-in-export", summary: wxrNote.summary, known: "Inventory note: shortcodes in the export", details: wxrNote });
+
+	// Findings the owner already decided in decisions.json: an embed shown as a card, an image or
+	// quoted text, or left out (not "html", which should still play); a script shown as code or removed
+	for (const f of findings) {
+		if (f.known || !f.slug) continue;
+		const embed = ["embed-lost", "embed-degraded"].includes(f.kind) && f.details?.type ? decisionFor(f.slug, "embeds", f.details.type) : null;
+		const script = ["code-shown-as-text", "tables-missing", "markup-visible"].includes(f.kind) ? decisionFor(f.slug, "code", "script-text") : null;
+		const decided = embed && embed !== "html" ? `embed: ${embed}` : script ? `script: ${script}` : null;
+		// `decided` keeps it in fix-content's view, so a decision not yet applied still gets applied
+		if (decided) Object.assign(f, { known: `Owner decision in decisions.json (${decided})`, decided, severity: "info", score: 1 });
+	}
 
 	// 9. Report
 	const rank = (f) => [GROUPS.findIndex((g) => g.key === f.group), SEVERITY.indexOf(f.severity), -(f.score ?? 0)];
@@ -607,6 +660,7 @@ async function main() {
 			oldCategories: cats.items.length,
 			oldTags: tags.items.length,
 			oldComments: commentTotal,
+			commentsShown: pageReports.reduce((n, p) => n + (p.comments?.shown ?? 0), 0),
 			oldSitemapUrls: oldSitemap.length,
 			newSitemapUrls: newSitemap.length,
 			pagesOk: items.filter((i) => i.ok).length,
@@ -877,6 +931,12 @@ function metaFindings(pr, base) {
 		if (pr.isLinkPost) add({ ...base, group: "metadata", severity: "info", kind: "featured-hidden-link-post", summary: "Featured image not shown (link post)", known: "Link posts don't show featured images by design", details: { old: it.featuredUrl } });
 		else add({ ...base, group: "metadata", severity: "medium", kind: "featured-missing", summary: "Featured image missing", details: { old: it.featuredUrl }, score: 6 });
 	}
+	// Comments the import planned for this page
+	if (COMMENT_PLAN && SEL.comment.length && m.comments != null) {
+		const expected = COMMENT_PLAN.perPost.get(slugKey(it.slug)) ?? 0;
+		pr.comments = { expected, shown: m.comments };
+		if (m.comments < expected) add({ ...base, group: "content", severity: "medium", kind: "comments-missing", summary: `${m.comments} of ${expected} imported comments shown`, details: { expected, shown: m.comments, note: "Apply import-comments.mjs to this site, render the Comments component on the entry page, or check newSite.selectors.comment" }, score: Math.min(8, 2 + expected - m.comments) });
+	}
 	if (pr.isLinkPost) {
 		const oldLinks = pr.oldA.links.map((l) => l.abs).filter(Boolean);
 		const trailer = pr.oldA.links.at(-1)?.abs;
@@ -945,8 +1005,9 @@ function finishPage(pr, imgResults, linkResults, linkRefs) {
 function imageFindings(pr, checks) {
 	if (!pr.imageDeficit) return;
 	const base = { slug: pr.slug, title: pr.title, oldUrl: pr.oldUrl, newUrl: pr.newUrl };
-	const shownOnOld = checks.filter((c) => c.result?.status === 200).map((c) => c.src);
-	const deadOnOld = checks.filter((c) => c.result?.status !== 200).map((c) => ({ src: c.src, status: c.result?.status }));
+	const loads = (r) => r?.status === 200 && !/^text\/html/i.test(r?.type ?? "");
+	const shownOnOld = checks.filter((c) => loads(c.result)).map((c) => c.src);
+	const deadOnOld = checks.filter((c) => !loads(c.result)).map((c) => ({ src: c.src, status: c.result?.status, type: c.result?.type ?? null }));
 	const lost = Math.min(pr.imageDeficit, shownOnOld.length || pr.imageDeficit);
 	const gallery = pr.oldA.galleries > 0 && pr.newA.galleries === 0;
 	if (shownOnOld.length || !checks.length) {
@@ -1060,7 +1121,10 @@ async function runUrlTests(items, cats, tags, oldSitemap) {
 
 	for (const c of cats.filter((c) => c.count > 0)) {
 		const path = pathKey(c.link);
-		tests.push({ group: "category", label: `Category ${path}/`, oldUrl: c.link, url: toNew(c.link), expect: { paths: [path] }, severity: "medium" });
+		// A nested category may also redirect to /<base>/<child>/ (templates/src/pages/category/[parent]/[slug].ts)
+		const segs = path.split("/").filter(Boolean);
+		const paths = segs.length > 2 ? [path, `/${CONFIG.newSite.categoryBase}/${segs.at(-1)}`] : [path];
+		tests.push({ group: "category", label: `Category ${path}/`, oldUrl: c.link, url: toNew(c.link), expect: { paths }, severity: "medium" });
 	}
 	for (const t of tags.filter((t) => t.count > 0)) {
 		const path = pathKey(t.link);
@@ -1118,6 +1182,11 @@ async function runUrlTests(items, cats, tags, oldSitemap) {
 		if (pass && e.xml) pass = /xml/.test(type ?? "");
 		if (pass && e.any200NotHome) pass = fp !== "/";
 		t.pass = pass;
+		// A sampled upload that fails: does WordPress still serve it?
+		if (!pass && t.group === "uploads" && !OFFLINE) {
+			const o = await probe(t.oldUrl);
+			if (o.status !== 200) t.oldStatus = o.status || "unreachable";
+		}
 		t.result = pass
 			? `ok (${hops ? `${hops} redirect${hops > 1 ? "s" : ""} → ` : ""}${fp})`
 			: r.status === 200

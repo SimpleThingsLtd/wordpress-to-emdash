@@ -12,7 +12,7 @@ depends on them.
 | Posts | 646 (601 published, 45 drafts), Gutenberg and classic-editor content mixed |
 | Pages | 22 |
 | Attachments | 486, about 525 MB |
-| Comments | 173 approved (151 comments, 22 pingbacks and trackbacks); not migrated, by decision |
+| Comments | 173 approved (151 comments, 22 pingbacks and trackbacks), plus 20 unapproved |
 | Tags and categories | 507 tags; nested categories |
 | Plugin post types | 1 (a Jetpack portfolio), missed by the export (gotcha A14) |
 | Permalink history | 3 older bases still linked from old posts (gotcha C3) |
@@ -62,6 +62,25 @@ Fixed with `fix-content` and legacy URL routes:
 Most of what remained needed the owner's decision rather than more code:
 - 16 high findings were embeds from providers EmDash doesn't play;
 - 151 low findings were date archives.
+
+## The owner's decisions, applied
+
+| Decision | What it took |
+| --- | --- |
+| Embeds | 6 CodePen, 4 Spotify and 1 SlideShare as `iframe` blocks; 10 tweets as quotes; a Giphy GIF as an image; Kickstarter and JSFiddle as link cards; 5 dead services left out |
+| Script widgets | 2 posts' scripts shown as code |
+| Date archives, a retired portfolio | redirects to the archive's year and to the page that replaced the portfolio |
+| Comments | 125 imported with their dates and 48 replies. Left out: 22 pingbacks, 20 spam that WordPress had approved, 3 the owner excluded, 2 replies to removed comments, 1 duplicate. All 18 borderline comments were read, and kept |
+
+| Measure | After one repair round → after the decisions |
+| --- | --- |
+| Findings (high / medium / low) | 26 / 34 / 231 → 2 / 16 / 70 |
+| Pages with findings | 92 → 67 |
+| Old-URL tests passing | 584 of 747 → 759 of 767 (more patterns tested) |
+| Comments shown where WordPress had them | 0 → 125 of 125 imported |
+
+The audit's last high findings: a sentence the converter dropped after a nested list inside a list
+item (a layout call for the owner), and a list item now shown as text plus a code block.
 
 ## What cost the most time
 

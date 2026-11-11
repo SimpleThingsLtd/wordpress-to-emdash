@@ -63,9 +63,24 @@ columns below about 40rem.
   - long lines scroll horizontally inside a focusable region; the page never overflows.
 
 ## Embeds
-EmDash's `embed` block plays YouTube and Vimeo. For other providers the owner decides (A6). The
-cheapest faithful option is a link card: provider name, title, URL, and an icon. Iframe embeds
-(CodePen, Spotify) can be custom components, but check the site's CSP and performance budget first.
+EmDash's `embed` block plays YouTube and Vimeo. For other providers the owner decides (A6), and
+`fix-content` → `embeds` applies the choice from `decisions.json`:
+
+| Choice | What it emits | Use for |
+| --- | --- | --- |
+| `html`: live embed | EmDash's `iframe` block: `{ _type: "iframe", src, title, height, allow, allowFullscreen }` | players and demos that are the point of the post: CodePen, Spotify, SlideShare |
+| `card` | an `embed` block with the URL and a caption (renders as a link) | dead campaigns, tools, anything where a link will do |
+| `card` for tweets | the tweet's text as quote paragraphs plus a "— Author (@handle) date" line | tweets: no X script, no tracking |
+| `image` | the provider's image in an isolated HTML block (sizes to fit) | GIFs (Giphy) |
+| `leave` | nothing | services that no longer exist |
+
+**Use the `iframe` block for live embeds, never an isolated HTML block.** EmDash sandboxes isolated
+HTML blocks without `allow-same-origin`, and nested frames inherit that. Embeds that need cookies
+or storage, including anything behind a bot check (CodePen, SlideShare), then fail with
+"cookies are disabled". The `iframe` block gives the embed its own origin, accepts only `https`
+sources, and sizes by height (fixed) or width and height (aspect ratio).
+
+Spotify: 152 px for a single track, 380 px for playlists.
 
 ## Typography that imported content exercises
 Old posts lean on blockquotes, lists, captions, `hr`, tables and inline code. Style all of them in

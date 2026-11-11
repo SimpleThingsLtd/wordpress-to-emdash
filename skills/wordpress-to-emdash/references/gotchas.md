@@ -82,13 +82,22 @@ finding kind, given in brackets.
   - tweets arrive as a `blockquote.twitter-tweet` with the script stripped.
 - **Fix:** `fix-content` → `embeds` emits `embed` blocks for YouTube and Vimeo, from both sources.
   For other providers, the owner chooses in `decisions.json`:
-  - a link card (an embed block with URL and caption; no code change needed);
-  - a sandboxed HTML embed (check the CSP first);
-  - drop it.
+  - `card`: a link card (an embed block with URL and caption; no code change needed);
+  - `html`: EmDash's `iframe` block with the provider's player URL and a fixed height (CodePen,
+    Spotify, SlideShare and other players that are iframes);
+  - `image`: the GIF itself, for GIF hosts such as Giphy;
+  - `leave`: drop it.
 
   Tweets keep their text as a quote with a citation line.
-- **Careful:** check what WordPress *actually displayed*. Embeds from dead services (Flash, closed
-  hosts) weren't working there either, and aren't migration losses.
+- **Careful:**
+  - Never use an isolated HTML block for a player. Its iframe sandbox has no
+    `allow-same-origin`, so CodePen and most other players refuse to load inside it, and the page
+    shows an empty box. `fix-content` upgrades HTML blocks from an earlier run to `iframe` blocks.
+  - Check what WordPress *actually displayed*. Embeds from dead services (Flash, closed hosts)
+    weren't working there either, and aren't migration losses.
+  - Bot-protected providers can't be checked headlessly: CodePen sits behind a Cloudflare
+    challenge, and SlideShare serves a CAPTCHA. The audit can't confirm they play, so check those
+    pages by hand in a real browser, Safari included.
 
 ### A7. Code blocks flattened, unlabelled, or showing entities
 - **Detect:** `<pre>` and `<code>` in classic posts; `class="language-…"`; `&#91;` inside code. The
@@ -136,10 +145,42 @@ finding kind, given in brackets.
 - **Fix:** `scripts/merge-bylines.mjs` (configured under `bylines`).
 
 ### A13. Comments aren't imported
-- **Detect:** `grep -c "<wp:comment>" wxr`.
-- **Cause:** the WXR contains comments, but EmDash's WXR import skips them.
-- **Fix:** an owner decision. Import them with the EmDash Exporter WordPress plugin, or accept the
-  loss explicitly (`audit.commentsAccepted`, so the audit stops reporting it).
+- **Detect:** `grep -c "<wp:comment>" wxr` (`<wp:comment_approved>1` for the approved ones). The
+  audit reports `comments-not-imported` until `import-comments.mjs` has run. After that, it counts
+  each page's comments against the plan, and a page that's short is `comments-missing`.
+- **Cause:** the WXR contains comments, but EmDash's WXR import skips them. EmDash 1.4 has a
+  native comments table (`_emdash_comments`), but none of its comment APIs can create an imported
+  comment:
+  - the public endpoint stamps the current time and runs moderation;
+  - the admin API only moderates;
+  - `emdash site import` needs an empty site.
+
+  Only the exporter import (`POST /_emdash/api/import/wordpress-plugin/execute`, phase
+  `comments`) keeps each comment's date, threading and status. It reads the comments from the
+  EmDash Exporter plugin, at a public address.
+
+  EmDash also keeps less than WordPress did:
+  - it has no column for the author's URL (migration 028 dropped it);
+  - it doesn't store the WordPress comment ID;
+  - it keeps one level of replies.
+- **Fix:** `import-comments.mjs` (dry run first). It handles each part:
+  - **What goes across:** approved comments only. Spam heuristics run on them, and pingbacks
+    are off by default. The preview (`comments/preview.html`) shows every exclusion and its
+    reason.
+  - **How:** it acts as the exporter. It serves the filtered comments behind a random token,
+    through a Cloudflare quick tunnel for the length of the run, and EmDash imports them.
+  - **What EmDash doesn't store:** author URLs and WordPress IDs go to
+    `wp-comment-extras.json`. The `Comments.astro` template reads that file, so names link to
+    their sites and old `#comment-<id>` anchors still work.
+
+  Then deploy (cached post pages keep the old version until the page cache is purged) and
+  re-run the audit with `--refresh`. Check that no commenter email reaches a page: the WXR has
+  them, and the template never renders them. If the owner doesn't want comments, record that in
+  `audit.commentsAccepted` instead.
+- **Careful:** a collection with comments enabled accepts new comments through EmDash's public
+  API even when the site shows no form, within its moderation and closing settings
+  (`commentsModeration`, `commentsClosedAfterDays`). Turn comments off for the collection if the
+  archive should be read-only, or set up moderation before cutover.
 
 ### A14. A whole post type is missing from the export
 - **Detect:** compare `wp post-type list` and the per-type counts, taken **with plugins loaded**,

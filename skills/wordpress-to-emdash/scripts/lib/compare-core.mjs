@@ -24,6 +24,7 @@ export function selectorsFromConfig() {
 		tags: asList(n.tags),
 		featured: asList(n.featured),
 		isPost: asList(n.isPost),
+		comment: asList(n.comment),
 		linkUrl: CONFIG.linkPosts.enabled ? asList(CONFIG.linkPosts.newSiteSelector) : [],
 		ignoreNew: asList(n.ignore),
 		ignoreOld: asList(CONFIG.wordpress.selectors.ignore),
@@ -107,6 +108,7 @@ export function analyse({ html, mode, base, sel }) {
 			featured: abs(first(S.featured)?.getAttribute("src")) || null,
 			linkUrl: first(S.linkUrl)?.getAttribute("href") || null,
 			isPost: list(S.isPost).length ? !!first(S.isPost) : null,
+			comments: list(S.comment).length ? all(S.comment).length : null,
 			docTitle: clean(doc.title),
 			is404: /not found|404/i.test(clean(doc.title)) && !prose,
 		};
@@ -158,6 +160,9 @@ export function analyse({ html, mode, base, sel }) {
 	const galleries = root.querySelectorAll(".gallery, .wp-block-gallery, .tiled-gallery, .emdash-gallery").length;
 
 	root.querySelectorAll(["script", "style", "noscript", "template", ...list(S.ignoreOld)].join(", ")).forEach((n) => n.remove());
+	// Embed fallbacks visitors didn't see once the player loaded: WordPress's post-embed quote and
+	// CodePen's "See the Pen …" paragraph. The embeds themselves were counted above.
+	if (mode === "old") root.querySelectorAll("blockquote.wp-embedded-content, p.codepen, p[data-slug-hash]").forEach((n) => n.remove());
 
 	// Code blocks: text only, so renderer markup changes don't matter
 	const codeOf = (el) => {

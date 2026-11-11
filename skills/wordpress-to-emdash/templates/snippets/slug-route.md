@@ -50,3 +50,16 @@ Notes:
 - **Pages replaced by new routes** (an old About page): add a redirect row
   (`urls.replacedPages`, applied by `add-redirects.mjs`) and unpublish the old page
   (`fix-content.mjs --only unpublish`), so the sitemap stops listing it (gotcha C6).
+
+## Year archives (`/2015/`)
+
+WordPress year archives are single-segment paths, so they reach this route. Redirect them only
+after the post lookup fails, because a post could be called `2015`. Month and day archives are in
+`templates/src/pages/[year]/[...rest].ts`.
+
+```ts
+if (!entry) {
+	if (/^(19|20)\d{2}$/.test(slug)) return Astro.redirect(`/archive/#y${slug}`, 301);
+	// …then the loose-slug fallback, then the 404
+}
+```

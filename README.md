@@ -20,6 +20,7 @@ is documented, with how to detect it and fix it.
 - **Scripts** (`scripts/`, Node 20 or later, no dependencies):
   - a resumable WXR import driver;
   - repairs for the converter's losses;
+  - a comment import that keeps dates and threads and leaves the spam behind;
   - legacy URL redirects;
   - a parity audit with screenshots and an HTML report.
 
@@ -29,6 +30,7 @@ is documented, with how to detect it and fix it.
   - a deploy-time cache purge;
   - a setup-wizard guard;
   - Portable Text overrides (quotes with citations, columns, highlighted code);
+  - a threaded comments component for the imported comments;
   - routes for every old WordPress URL pattern.
 
 ## Install
