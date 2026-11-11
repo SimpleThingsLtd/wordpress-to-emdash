@@ -1,0 +1,128 @@
+{
+	"//": "Copy to your EmDash site's root as migration.config.json. Every key is explained in references/configuration.md; delete what you don't need, since every key except sites.wordpress has a default.",
+	"site": {
+		"name": "Example Journal",
+		"locale": "en-GB",
+		"timeZone": "Europe/London"
+	},
+	"sites": {
+		"wordpress": "https://example.com",
+		"staging": "https://new.example.com",
+		"final": "https://example.com",
+		"local": "http://localhost:4321"
+	},
+	"paths": {
+		"root": ".",
+		"work": ".migration",
+		"wxr": ".migration/site.wxr.xml",
+		"compare": ".migration/compare",
+		"compareCache": ".migration/compare-cache",
+		"fixes": ".migration/fixes",
+		"decisions": ".migration/fixes/decisions.json",
+		"tools": ".migration/tools",
+		"wpIds": "src/lib/wp-ids.json"
+	},
+	"d1": {
+		"database": "example-journal"
+	},
+	"content": {
+		"postTypes": { "post": "posts", "page": "pages" },
+		"entryPath": "/{slug}/",
+		"bylineCollections": ["posts", "pages"]
+	},
+	"import": {
+		"importMenus": false,
+		"importSiteTitle": false,
+		"importLogo": false,
+		"importSeo": true,
+		"skipExisting": true,
+		"mediaBatchSize": 5
+	},
+	"wordpress": {
+		"extraPostTypes": [{ "rest": "jetpack-portfolio", "kind": "portfolio" }],
+		"sitemap": "/sitemap_index.xml",
+		"selectors": {
+			"content": ".entry-content",
+			"ignore": ".sharedaddy, .jp-relatedposts, #jp-post-flair, .jetpack-likes-widget-wrapper, .wpcnt"
+		}
+	},
+	"newSite": {
+		"sitemap": "/sitemap.xml",
+		"sections": ["/archive/", "/search/"],
+		"categoryBase": "category",
+		"tagBase": "tag",
+		"selectors": {
+			"content": ["article .prose", ".prose"],
+			"title": ["h1"],
+			"date": "article time[datetime]",
+			"categories": "article a[href*='/category/']",
+			"tags": "article a[href*='/tag/']",
+			"featured": "article figure.featured img",
+			"isPost": "article .byline",
+			"ignore": ".code__bar"
+		}
+	},
+	"urls": {
+		"oldPermalinkBases": ["blog"],
+		"replacedPages": { "about-me": "/about/" },
+		"listingPages": { "archive": "/archive/" },
+		"acceptedRedirects": { "/category/news/": "/archive/" },
+		"authorArchiveTarget": "/about/"
+	},
+	"audit": {
+		"searchTerm": "design",
+		"permalinkSamples": 10,
+		"idSamples": 18,
+		"uploadSamples": 20,
+		"resizedSamples": 5,
+		"attachmentPageSamples": 6,
+		"extraUrlTests": [
+			{ "path": "/portfolio/", "severity": "medium", "expect": "any200NotHome" },
+			{ "path": "/category/news/feed/", "severity": "low", "expect": "feed" }
+		],
+		"knownNoise": [
+			{ "kind": "page-missing", "slug": "^test-", "reason": "Test posts deliberately left behind" }
+		],
+		"commentsAccepted": "Owner decision 2026-01-15: comments are not migrated",
+		"shots": 10
+	},
+	"linkPosts": {
+		"enabled": false,
+		"collection": "posts",
+		"field": "link_url",
+		"trailerBeforeLink": "—\\s*Read on\\s*$",
+		"trailerWords": ["Read on", "Read it on"],
+		"category": "links",
+		"newSiteSelector": "a.link-post__source",
+		"expandShorteners": true,
+		"shorteners": ["ift.tt", "bit.ly", "t.co", "goo.gl", "ow.ly", "buff.ly", "j.mp", "tinyurl.com"]
+	},
+	"bylines": {
+		"merge": [
+			{
+				"target": { "slug": "jane-smith", "displayName": "Jane Smith", "websiteUrl": "https://example.com", "isGuest": true },
+				"duplicates": "^jsmith(-\\d+)?$"
+			}
+		]
+	},
+	"redirects": {
+		"rules": [
+			{ "source": "/author/[...path]", "destination": "/about/" },
+			{ "source": "/comments/feed", "destination": "/feed/" }
+		],
+		"group": "wordpress",
+		"uploadsGroup": "wp-uploads"
+	},
+	"fixes": {
+		"waybackTimestamp": "2014",
+		"unpublish": { "pages:old-contact": "Replaced by the footer contact details" },
+		"shortcodes": {
+			"layout": ["one_half", "one_half_last", "one_third", "one_third_last", "two_third", "two_third_last", "one_fourth", "one_fourth_last", "three_fourth", "three_fourth_last", "box"],
+			"button": ["button"]
+		}
+	},
+	"http": {
+		"userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36 wordpress-to-emdash",
+		"concurrency": { "wordpress": 4, "new": 12, "external": 4 }
+	}
+}

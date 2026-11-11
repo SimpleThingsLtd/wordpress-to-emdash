@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "simple-things",
+  "description": "Skills and plugins from Simple Things Ltd.",
+  "owner": {
+    "name": "Simple Things Ltd"
+  },
+  "plugins": [
+    {
+      "name": "wordpress-to-emdash",
+      "displayName": "WordPress to EmDash",
+      "description": "Migrate a WordPress site to EmDash CMS on Cloudflare without losing content, media or links, with a page-by-page parity audit against the live site.",
+      "author": {
+        "name": "Simple Things Ltd"
+      },
+      "source": "./",
+      "category": "development",
+      "homepage": "https://github.com/SimpleThingsLtd/wordpress-to-emdash",
+      "keywords": ["wordpress", "emdash", "migration", "cloudflare"]
+    }
+  ]
+}

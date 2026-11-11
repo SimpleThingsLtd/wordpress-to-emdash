@@ -1,0 +1,21 @@
+---
+/**
+ * Portable Text with the overrides imported WordPress content needs:
+ * quotes with citations (gotcha A1), column layouts that keep their images
+ * (A2), and highlighted code blocks (A7, D14). Use it everywhere content
+ * renders (posts, pages, other collections) instead of PortableText directly:
+ *
+ *   <Content value={entry.data.content} />
+ */
+import { PortableText } from "emdash/ui";
+import CodeBlock from "./pt/CodeBlock.astro";
+import Columns from "./pt/Columns.astro";
+import Quote from "./pt/Quote.astro";
+
+interface Props {
+	value: unknown[] | null | undefined;
+}
+const { value } = Astro.props;
+---
+
+<PortableText value={(value ?? []) as never} components={{ type: { blockquoteGroup: Quote, columns: Columns, code: CodeBlock } }} />

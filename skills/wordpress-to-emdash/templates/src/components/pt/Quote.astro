@@ -1,0 +1,42 @@
+---
+/**
+ * A multi-paragraph quote (EmDash groups consecutive blockquote blocks into
+ * one blockquoteGroup node). A closing "— Name" paragraph, which is how
+ * fix-quotes.mjs writes WordPress citations and how embedded tweets arrive,
+ * becomes the quote's <footer> (gotcha A1).
+ */
+import { PortableText } from "emdash/ui";
+
+type Span = { _type: string; text?: string; [k: string]: unknown };
+type QuoteBlock = { _type: string; _key?: string; style?: string; children?: Span[]; [k: string]: unknown };
+interface Props {
+	node: { _type: "blockquoteGroup"; _key: string; blocks: QuoteBlock[] };
+}
+
+const { node } = Astro.props;
+const DASH = /^\s*(?:—|―|–|--?)\s*/;
+const textOf = (b: QuoteBlock) => (b.children ?? []).map((c) => c.text ?? "").join("");
+
+const blocks = (node?.blocks ?? []).map((b) => ({ ...b, style: "normal" }));
+const last = blocks.at(-1);
+const hasCite = blocks.length > 1 && last !== undefined && DASH.test(textOf(last));
+const body = hasCite ? blocks.slice(0, -1) : blocks;
+
+let cite: QuoteBlock | null = null;
+if (hasCite && last) {
+	const [first, ...rest] = last.children ?? [];
+	const trimmed = first ? { ...first, text: (first.text ?? "").replace(DASH, "") } : first;
+	cite = { ...last, children: [trimmed, ...rest].filter(Boolean) as Span[] };
+}
+---
+
+<blockquote>
+	<PortableText value={body} />
+	{
+		cite && (
+			<footer>
+				<PortableText value={[cite]} />
+			</footer>
+		)
+	}
+</blockquote>

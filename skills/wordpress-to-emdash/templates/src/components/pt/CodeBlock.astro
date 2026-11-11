@@ -1,0 +1,294 @@
+---
+/**
+ * Code blocks (gotchas A7, D14): highlighted on the server
+ * (src/lib/highlight.ts), with the language detected from the code when the
+ * block has none (src/lib/code-lang.ts), and a colour per role (keyword,
+ * string, number…) defined below as light-dark() pairs.
+ *
+ * Multi-line blocks get a header (language or filename, and Copy). One-liners
+ * stay compact, with a drawn "$" for shell commands that isn't copied. In a
+ * shell session, Copy takes only the commands.
+ *
+ * Styling: everything is a CSS custom property with a neutral default,
+ * declared at zero specificity, so the site overrides any of them with a
+ * plain rule in its own stylesheet:
+ *
+ *   .code {
+ *     --code-font: var(--font-mono);
+ *     --code-bg: light-dark(#fffdf8, #191813);
+ *     --tok-k: light-dark(#0b6a65, #74cfc2);
+ *   }
+ *
+ *   --code-bg, --code-bar, --code-edge, --code-fg   block, header bar, border, text
+ *   --code-font, --code-size, --code-radius          type and shape
+ *   --code-shadow, --code-focus, --code-ease         shadow, focus ring, transitions
+ *   --tok-c  comment       --tok-k  keyword, label  --tok-s  string
+ *   --tok-n  number, flag  --tok-f  function, command
+ *   --tok-t  tag, type     --tok-a  attribute, key  --tok-v  variable
+ *   --tok-p  punctuation   --tok-ins / --tok-del    diff lines
+ *   --tok-out terminal output
+ *
+ * light-dark() needs `color-scheme: light dark` on the page (EmDash's
+ * templates set it). After changing a colour, run
+ * `node scripts/check-code-contrast.mjs`: every role must reach 4.5:1
+ * against --code-bg in both modes.
+ */
+import { LANG_LABEL, langFor } from "../../lib/code-lang";
+import { highlight } from "../../lib/highlight";
+
+interface Props {
+	node: { _type: "code"; _key: string; code?: string; language?: string; filename?: string };
+}
+
+const { node } = Astro.props;
+// WordPress stored [ and ] in code as &#91; and &#93;, so they wouldn't be
+// read as shortcodes, and showed them as brackets. Show them the same way.
+const code = (node?.code ?? "").replace(/&#91;/g, "[").replace(/&#93;/g, "]").replace(/^(\s*\n)+/, "").replace(/\s+$/, "");
+if (!code.trim()) return null;
+
+const lang = langFor(code, node.language);
+const { html, lines, session } = await highlight(code, lang);
+const single = lines === 1;
+const label = node.filename || LANG_LABEL[lang];
+const prompt = single && lang === "bash" && !session;
+---
+
+<figure class:list={["code", { "code--line": single, "code--out": lang === "output" }]} data-lang={lang}>
+	{
+		!single && (
+			<div class="code__bar">
+				<span class:list={["code__label", { "code__label--file": node.filename }]}>{label}</span>
+				<button type="button" class="code__copy" hidden><span aria-live="polite">Copy</span></button>
+			</div>
+		)
+	}
+	<pre class="code__pre" tabindex="0" aria-label={`${label}${single ? "" : `, ${lines} lines`}`}><code>{prompt && <span class="prompt" aria-hidden="true" data-nocopy>$ </span>}<Fragment set:html={html} /></code></pre>
+	{
+		single && (
+			<button type="button" class="code__copy code__copy--line" hidden aria-label={`Copy ${label.toLowerCase()}`}>
+				<span aria-live="polite">Copy</span>
+			</button>
+		)
+	}
+</figure>
+
+<script>
+	// Copy: the code without drawn prompts; in a shell session, just the commands
+	if (navigator.clipboard) {
+		for (const button of document.querySelectorAll<HTMLButtonElement>(".code__copy")) {
+			button.hidden = false;
+			const status = button.querySelector("span")!;
+			let timer = 0;
+			button.addEventListener("click", async () => {
+				const code = button.closest(".code")?.querySelector("code");
+				if (!code) return;
+				const copy = code.cloneNode(true) as HTMLElement;
+				copy.querySelectorAll("[data-nocopy]").forEach((n) => n.remove());
+				const commands = [...copy.querySelectorAll(".line[data-cmd]")];
+				const text = commands.length ? commands.map((l) => l.textContent).join("\n") : (copy.textContent ?? "");
+				try {
+					await navigator.clipboard.writeText(text);
+					status.textContent = "Copied";
+				} catch {
+					status.textContent = "Couldn’t copy";
+				}
+				button.dataset.done = "";
+				clearTimeout(timer);
+				timer = window.setTimeout(() => {
+					status.textContent = "Copy";
+					delete button.dataset.done;
+				}, 1800);
+			});
+		}
+	}
+</script>
+
+<style>
+	/* Defaults at zero specificity: any `.code { --tok-k: … }` in the site's CSS wins */
+	:global(:where(.code)) {
+		--code-bg: light-dark(#f7f7f8, #16171a);
+		--code-bar: light-dark(#ececef, #1f2024);
+		--code-edge: light-dark(#d9d9de, #33343a);
+		--code-fg: light-dark(#1e1f24, #e4e4e7);
+		--tok-c: light-dark(#5d6068, #9b9ea6);
+		--tok-k: light-dark(#9b2c6c, #f19ac8);
+		--tok-s: light-dark(#2c6a12, #9cd67a);
+		--tok-n: light-dark(#8a4a00, #efb35d);
+		--tok-f: light-dark(#1d5db0, #8fbbf5);
+		--tok-t: light-dark(#7340a8, #c8a3f2);
+		--tok-a: light-dark(#0b6b70, #6ccfd2);
+		--tok-v: light-dark(#ad2a2a, #f49a92);
+		--tok-p: light-dark(#54565d, #afb1b8);
+		--tok-ins: light-dark(#236f1d, #86d27b);
+		--tok-del: light-dark(#a12121, #f28f87);
+		--tok-out: light-dark(#4e5056, #c0c2c8);
+
+		--code-font: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
+		--code-size: 0.85em;
+		--code-radius: 10px;
+		--code-shadow: 0 1px 0 var(--code-edge);
+		--code-focus: var(--tok-k);
+		--code-ease: ease;
+	}
+
+	.code {
+		position: relative;
+		margin-block: 2em;
+		background: var(--code-bg);
+		border: 1px solid var(--code-edge);
+		border-radius: var(--code-radius);
+		box-shadow: var(--code-shadow);
+		overflow: hidden;
+		font-family: var(--code-font);
+	}
+	.code__bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.4rem 0.5rem 0.4rem 1.1rem;
+		background: var(--code-bar);
+		border-bottom: 1px solid var(--code-edge);
+	}
+	.code__label {
+		font-size: 0.7em;
+		font-weight: 500;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--tok-k);
+	}
+	.code__label--file {
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 0.76em;
+		color: var(--code-fg);
+	}
+
+	.code__pre {
+		margin: 0;
+		padding: 1em 1.25em 1.1em;
+		background: none;
+		border: 0;
+		border-radius: 0;
+		overflow-x: auto;
+		font-size: var(--code-size);
+		line-height: 1.7;
+		tab-size: 2;
+		color: var(--code-fg);
+		font-variant-ligatures: none;
+		scrollbar-width: thin;
+		scrollbar-color: var(--code-edge) transparent;
+	}
+	.code__pre:focus-visible {
+		outline: 2px solid var(--code-focus);
+		outline-offset: -2px;
+	}
+	.code__pre code {
+		font: inherit;
+		background: none;
+		padding: 0;
+	}
+
+	/* One-liners: compact, Copy at the end of the line */
+	.code--line {
+		display: flex;
+		align-items: center;
+		margin-block: 1.4em;
+	}
+	.code--line .code__pre {
+		flex: 1;
+		min-width: 0;
+		padding: 0.7em 1em;
+	}
+
+	.code__copy {
+		flex: none;
+		font: inherit;
+		font-size: 0.7em;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.35em 0.85em;
+		border: 1px solid var(--code-edge);
+		border-radius: 99px;
+		background: var(--code-bg);
+		color: var(--code-fg);
+		cursor: pointer;
+		transition:
+			background 0.2s var(--code-ease),
+			color 0.2s var(--code-ease),
+			border-color 0.2s var(--code-ease);
+	}
+	.code__copy:hover {
+		border-color: var(--tok-k);
+		color: var(--tok-k);
+	}
+	.code__copy:focus-visible {
+		outline: 2px solid var(--code-focus);
+		outline-offset: 2px;
+	}
+	.code__copy[data-done] {
+		background: var(--tok-k);
+		border-color: var(--tok-k);
+		color: var(--code-bg);
+	}
+	.code__copy--line {
+		margin-right: 0.6rem;
+	}
+
+	/* Token roles (the spans come from the highlighter, so these are global) */
+	.code__pre :global(.c) {
+		color: var(--tok-c);
+		font-style: italic;
+	}
+	.code__pre :global(.k) {
+		color: var(--tok-k);
+		font-weight: 500;
+	}
+	.code__pre :global(.s) {
+		color: var(--tok-s);
+	}
+	.code__pre :global(.n) {
+		color: var(--tok-n);
+	}
+	.code__pre :global(.f) {
+		color: var(--tok-f);
+	}
+	.code__pre :global(.t) {
+		color: var(--tok-t);
+	}
+	.code__pre :global(.a) {
+		color: var(--tok-a);
+	}
+	.code__pre :global(.v) {
+		color: var(--tok-v);
+	}
+	.code__pre :global(.p) {
+		color: var(--tok-p);
+	}
+	.code__pre :global(.h) {
+		color: var(--tok-k);
+		font-weight: 600;
+	}
+	.code__pre :global(.ins) {
+		color: var(--tok-ins);
+	}
+	.code__pre :global(.del) {
+		color: var(--tok-del);
+	}
+	/* Shell sessions and output: prompts drawn and never copied, output quieter */
+	.code__pre :global(.prompt) {
+		color: var(--tok-k);
+		font-weight: 600;
+		user-select: none;
+	}
+	.code__pre :global(.out),
+	.code--out .code__pre {
+		color: var(--tok-out);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.code__copy {
+			transition: none;
+		}
+	}
+</style>

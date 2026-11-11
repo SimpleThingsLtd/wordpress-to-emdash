@@ -1,0 +1,56 @@
+---
+/**
+ * WordPress column layouts (gotcha A2). EmDash's own Columns renders each
+ * column without the image, embed and gallery renderers, so images inside
+ * columns vanished; this renders each column through the full Portable Text
+ * set, with the same quote and code overrides as the page.
+ *
+ * Layout custom properties (override from the site's CSS):
+ *   --columns-gap        space between columns (1.25rem)
+ *   --columns-stack-at   is fixed in the media query below (40rem): edit it there
+ */
+import { PortableText } from "emdash/ui";
+import CodeBlock from "./CodeBlock.astro";
+import Quote from "./Quote.astro";
+
+interface Props {
+	node: {
+		_type: "columns";
+		_key: string;
+		columns?: Array<{ _type: "column"; _key: string; content?: unknown[]; width?: string }>;
+	};
+}
+
+const columns = Astro.props.node?.columns ?? [];
+---
+
+{
+	columns.length > 0 && (
+		<div class="emdash-columns pt-columns" style={`--column-count: ${columns.length}`}>
+			{columns.map((column) => (
+				<div class="pt-column" style={column.width ? `flex-basis: ${column.width}` : undefined}>
+					<PortableText value={(column.content ?? []) as never} components={{ type: { blockquoteGroup: Quote, code: CodeBlock } }} />
+				</div>
+			))}
+		</div>
+	)
+}
+
+<style>
+	.pt-columns {
+		display: flex;
+		gap: var(--columns-gap, 1.25rem);
+	}
+	.pt-column {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+	.pt-column > :global(* + *) {
+		margin-top: 1em;
+	}
+	@media (max-width: 40rem) {
+		.pt-columns {
+			flex-direction: column;
+		}
+	}
+</style>
